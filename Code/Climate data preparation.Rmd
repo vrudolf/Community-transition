@@ -42,7 +42,7 @@ The code here prepares the climate data from our frog pond location for general 
 # Temperature and precipitation data
 ```{r formatdata}
 #get and organize raw daily climate observations from weather station
-climate<-read_csv("datasets/Climatedata2011_2024.csv")%>%select(DATE,PRCP,TAVG,TMAX,TMIN)
+climate<-read_csv(here("data","Climatedata2011_2024.csv"))%>%select(DATE,PRCP,TAVG,TMAX,TMIN)
 climate$DATE<-as.Date(climate$DATE,format="%m/%d/%Y")
 climate<-climate%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
 
@@ -137,7 +137,7 @@ sumclimaYB<-left_join(sumclimaY,burstiness_by_cycle)
 This is data on the drought index, which is calculated based on "missing" rain. It comes in range of severeness categories, so not as continuous values.
 ```{r drought}
 
-drought<-read_csv("datasets/DroughtDataDCForest.csv")%>%select(ValidStart,None,D0,D1,D2,D3,D4)
+drought<-read_csv(here("data","DroughtDataDCForest.csv"))%>%select(ValidStart,None,D0,D1,D2,D3,D4)
 drought$DATE<-as.Date(drought$ValidStart,"%m/%d/%Y")
 drought<-drought%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
 drought<-drought%>%mutate(cycle=case_when(
@@ -165,15 +165,15 @@ scaledsumclimaY <- data.frame(
   scale(sumclimaYBD[, -1])              # scale all other columns
 )
 
-write_csv(sumclimaYBD, "output/frog_climate_data_annualsum.csv")
-write_csv(scaledsumclimaY, "output/frog_climate_data_annual_scaled.csv")
+write_csv(sumclimaYBD, here("output","frog_climate_data_annualsum.csv"))
+write_csv(scaledsumclimaY, here("output","frog_climate_data_annual_scaled.csv"))
 
 ```
 
 PCA of weather data
 ```{r}
-sumclimaY<-read.csv("output/frog_climate_data_annualsum.csv")
-scaledsumclimaY<-read.csv("output/frog_climate_data_annual_scaled.csv")
+sumclimaY<-read.csv(here("output","frog_climate_data_annualsum.csv"))
+scaledsumclimaY<-read.csv(here("output","frog_climate_data_annual_scaled.csv"))
 
 library("factoextra")
 
@@ -220,7 +220,7 @@ pc_scores$cycle <- scaledsumclimaY$cycle
 pc_output <- pc_scores %>%select(cycle, PC1, PC2)
 
 # Save to CSV
-write.csv(pc_output, "output/frog_WeatherPCA.csv", row.names = FALSE)
+write.csv(pc_output, here("output","frog_WeatherPCA.csv"), row.names = FALSE)
 ```
 
 So based on this, the most unusual cycles are 11 and 23 and 12, 22 (driest & hottest in order), 15 (dry but cold). 4 was the wettest cycle, and 5 is borderline but  shows up in several "extreme hot" categories

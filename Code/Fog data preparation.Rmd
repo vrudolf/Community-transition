@@ -42,7 +42,7 @@ Raw data comes in various forms for phenology. The data we need for the network 
 options(readr.show_col_types = FALSE)
 #import raw phenology data which in our case is calling phenology of frogs, and remove any na (which are caused by data recorder not working in our case).
 
-frogs<-read_csv(here("./datasets/dailycalls_corrected_2022.csv"))%>%na.omit
+frogs<-read_csv(here("./data/dailycalls_corrected_2022.csv"))%>%na.omit
 
 #Phenology data doesn't always line up with the calendar year, like in our frog data. Instead, we used extensive analysis to define cutoff point for a an annual cycle which was day 340 in our case. So we use this cutoff to separates cycles which requires some data manipulation. Skip this step if your system aligns with calendar year
 frogs<-frogs%>%mutate(cycle=case_when(
@@ -245,15 +245,19 @@ process_frog_presence <- function(frogs_data, gap_tolerance = 0) {
 # Main execution examples with different gap tolerances
 # Assuming your data frame is called 'frogs'
 
-# Example 1: No gap tolerance (original behavior)
+# 1: No gap tolerance (original behavior)
 cat("=== Processing with no gap tolerance (original) ===\n")
 results_original <- process_frog_presence(frogs, gap_tolerance = 0)
 
-# Example 2: 1-day gap tolerance
+# 2: 1-day gap tolerance
 cat("\n=== Processing with 1-day gap tolerance ===\n")
 results_1day <- process_frog_presence(frogs, gap_tolerance = 1)
 
-# Example 3: 3-day gap tolerance
+# 3: 2-day gap tolerance
+cat("\n=== Processing with 1-day gap tolerance ===\n")
+results_2day <- process_frog_presence(frogs, gap_tolerance = 2)
+
+# 4: 3-day gap tolerance
 cat("\n=== Processing with 3-day gap tolerance ===\n")
 results_3day <- process_frog_presence(frogs, gap_tolerance = 3)
 
@@ -280,15 +284,14 @@ comparison_results <- compare_gap_tolerance_results(results_original, results_1d
 cat("\n=== Comparison of Gap Tolerance Effects ===\n")
 print(comparison_results)
 
-# Extract results for your preferred gap tolerance
-# Change this to use whichever gap tolerance you prefer
-preferred_gap_tolerance <- 2  # Set to 0, 1, 3, or any other value
-cat(paste("\n=== Using", preferred_gap_tolerance, "day gap tolerance for final results ===\n"))
 
-results_final <- process_frog_presence(frogs, gap_tolerance = preferred_gap_tolerance)
-node_dynamic <- results_final$node_dynamic
-node_attributes <- results_final$node_attributes
-species_summary <- results_final$species_summary
+node_dynamic <- results_original$node_dynamic
+node_dynamic_g1 <- results_1day$node_dynamic
+node_dynamic_g2 <- results_2day$node_dynamic
+node_dynamic_g3 <- results_3day$node_dynamic
+
+node_attributes <- results_original$node_attributes
+species_summary <- results_original$species_summary
 
 # Display summary information
 cat("Summary of species presence intervals:\n")
@@ -301,16 +304,20 @@ cat("\nFirst few rows of node_attributes:\n")
 print(head(node_attributes))
 
 # Save results with gap tolerance in filename
-gap_suffix <- ifelse(preferred_gap_tolerance == 0, "", paste0("_gap", preferred_gap_tolerance))
+write_csv(node_dynamic, here("output","frogs_node_dynamic.csv"))
+write_csv(node_dynamic_g1, here("output","frogs_node_dynamic_gap1.csv"))
+write_csv(node_dynamic_g2, here("output","frogs_node_dynamic_gap2.csv"))
+write_csv(node_dynamic_g3, here("output","frogs_node_dynamic_gap3.csv"))
 
-write_csv(node_dynamic, paste0("output/frogs_node_dynamic", gap_suffix, ".csv"))
-write_csv(node_attributes, paste0("output/frogs_node_attributes", gap_suffix, ".csv"))
-write_csv(species_summary, paste0("output/frogs_species_summary", gap_suffix, ".csv"))
+write_csv(node_attributes, here("output","frogs_node_attributes.csv"))
+write_csv(species_summary, here("output","frogs_species_summary.csv"))
 
 # Save comparison results
-write_csv(comparison_results, "output/frogs_gap_tolerance_comparison.csv")
+write_csv(comparison_results, here("./output/frogs_gap_tolerance_comparison.csv"))
+```
 
 # Function to create a detailed example showing the effect of gap tolerance
+```{r}
 demonstrate_gap_filling <- function(frogs_data, example_pond = NULL, example_species = NULL, example_cycle = NULL) {
   # If no specific example provided, find one automatically
   if (is.null(example_pond) || is.null(example_species) || is.null(example_cycle)) {

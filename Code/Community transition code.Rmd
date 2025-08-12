@@ -42,19 +42,19 @@ We assume the data comes in the form of "Dynamic Nodes" from the "network Code",
 ```{r}
 #get previously curated data
 #raw data
-node_dynamic<-read_csv("output/frogs_node_dynamic.csv")%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
 
 #get number of species per pond x cycle
 
 sp_num<-node_dynamic%>%
   group_by(pond, cycle)%>%
   summarize(No_Spec=n_distinct(species),.groups="drop")
-write_csv(sp_num, "output/frog_pond_cycle_NoSpec.csv")  
+write_csv(sp_num, here("./output/frog_pond_cycle_NoSpec.csv"))  
 
 #data but ignoring gaps of 1, 2 or 3 days between calling of the same species.
-node_dynamic_g1<-read_csv("output/frogs_node_dynamic_gap1.csv")%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
-node_dynamic_g2<-read_csv("output/frogs_node_dynamic_gap2.csv")%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
-node_dynamic_g3<-read_csv("output/frogs_node_dynamic_gap3.csv")%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
 
 ```
 
@@ -207,11 +207,11 @@ process_community_states <- function(node_dynamic_data,
 # Convenience wrapper for the most common use case (pond + cycle grouping)
 process_pond_cycle_states <- function(node_dynamic_data, 
                                     output_suffix = NULL,
-                                    output_dir = "output") {
+                                    output_dir = here("output")) {
   
   # Create output filename if suffix provided
   output_file <- if (!is.null(output_suffix)) {
-    file.path(output_dir, paste0("frog_CommunityStates_", output_suffix, ".csv"))
+    file.path(output_dir, paste0("frog_CommunityStates", output_suffix, ".csv"))
   } else {
     NULL
   }
@@ -228,29 +228,22 @@ process_pond_cycle_states <- function(node_dynamic_data,
   return(result)
 }
 
-community_states <- process_pond_cycle_states(node_dynamic)
+community_states <- process_pond_cycle_states(node_dynamic, output_suffix = "")
 
-community_states_g1 <- process_pond_cycle_states(node_dynamic_g1, output_suffix = "g1")
+community_states_g1 <- process_pond_cycle_states(node_dynamic_g1,output_suffix = "_g1")
 
-community_states_g2 <- process_pond_cycle_states(node_dynamic_g2, output_suffix = "g2")
+community_states_g2 <- process_pond_cycle_states(node_dynamic_g2, output_suffix = "_g2")
 
-community_states_g3 <- process_pond_cycle_states(node_dynamic_g3, output_suffix = "g3")
-
-#save the data
-write_csv(community_states,"output/frog_CommunityStates.csv")
-write_csv(community_states_g1,"output/frog_CommunityStates_g1.csv")
-write_csv(community_states_g2,"output/frog_CommunityStates_g2.csv")
-write_csv(community_states_g3,"output/frog_CommunityStates_g3.csv")
-
+community_states_g3 <- process_pond_cycle_states(node_dynamic_g3, output_suffix = "_g3")
 ```
 
 ##create transition links between states
 Now that we know when states are present, we can connect states. An important consideration here is how to deal with empty communities. e.g. if communities are empty between states and the period is short, do we model transitions including empty state, or just between communities? Depends on the question and code should be modified based on those. For now, we include all empty states.
 ```{r state transitions, message=FALSE}
-community_states<-read_csv("output/frog_CommunityStates.csv")
-community_states_g1<-read_csv("output/frog_CommunityStates_g1.csv")
-community_states_g2<-read_csv("output/frog_CommunityStates_g3.csv")
-community_states_g3<-read_csv("output/frog_CommunityStates_g3.csv")
+community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
+community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
+community_states_g2<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
+community_states_g3<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
 
 # Create transitions data frame function
 get_community_transitions <- function(data) {
@@ -275,19 +268,19 @@ community_transitions_g3<-get_community_transitions(community_states_g3)
 
 
 #save results
-write_csv(community_transitions, "output/frog_transit_states.csv")
-write_csv(community_transitions_g1, "output/frog_transit_states_g1.csv")
-write_csv(community_transitions_g2, "output/frog_transit_states_g2.csv")
-write_csv(community_transitions_g3, "output/frog_transit_states_g3.csv")
+write_csv(community_transitions, here("./output/frog_transit_states.csv"))
+write_csv(community_transitions_g1, here("./output/frog_transit_states_g1.csv"))
+write_csv(community_transitions_g2, here("./output/frog_transit_states_g2.csv"))
+write_csv(community_transitions_g3, here("./output/frog_transit_states_g3.csv"))
 ```
 
 #create transition networks
 Now we will use the igraph package to create graphs to visualize the networks
 ```{r transition networks}
-community_transitions<-read_csv("output/frog_transit_states.csv")
-community_transitions_g1<-read_csv("output/frog_transit_states_g1.csv")
-community_transitions_g2<-read_csv("output/frog_transit_states_g2.csv")
-community_transitions_g3<-read_csv("output/frog_transit_states_g3.csv")
+community_transitions<-read_csv(here("./output/frog_transit_states.csv"))
+community_transitions_g1<-read_csv(here("./output/frog_transit_states_g1.csv"))
+community_transitions_g2<-read_csv(here("./output/frog_transit_states_g2.csv"))
+community_transitions_g3<-read_csv(here("./output/frog_transit_states_g3.csv"))
 
 
 #let's run a test for a simple pond, note it will assume first two columns are the node pairs for the edges
@@ -348,10 +341,10 @@ community_networks_g2<- community_networks_fun(community_transitions_g2)
 community_networks_g3<- community_networks_fun(community_transitions_g3)
 
 #save data
-saveRDS(community_networks,file="frog_community_networks.rds")
-saveRDS(community_networks_g1,file="frog_community_networks_g1.rds")
-saveRDS(community_networks_g2,file="frog_community_networks_g2.rds")
-saveRDS(community_networks_g3,file="frog_community_networks_g3.rds")
+saveRDS(community_networks,file=here("./output/frog_community_networks.rds"))
+saveRDS(community_networks_g1,file=here("./output/frog_community_networks_g1.rds"))
+saveRDS(community_networks_g2,file=here("./output/frog_community_networks_g2.rds"))
+saveRDS(community_networks_g3,file=here("./output/frog_community_networks_g3.rds"))
 
 ```
 
@@ -361,7 +354,7 @@ We can look at this in a lot of different ways.
 ##Community states
 First, we can just look at community states,either at the distributions, or average duration of a given state, or unique states etc.
 ```{r}
-community_states<-read_csv("output/frog_CommunityStates.csv")
+community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
 #now look at averages of states and frequency
 
 com_state_Ave<-community_states%>%
@@ -522,10 +515,10 @@ trans_markov_matrix_g3<-trans_markov(community_transitions_g3)
 
 
 # save results
-#write_csv(trans_markov_matrix, "output/frog_trans_markov.csv")
-#write_csv(trans_markov_matrix_g1, "output/frog_trans_markov_g1.csv")
-#write_csv(trans_markov_matrix_g2, "output/frog_trans_markov_g2.csv")
-#write_csv(trans_markov_matrix_g3, "output/frog_trans_markov_g3.csv")
+write_csv(trans_markov_matrix, here("./output/frog_trans_markov.csv"))
+write_csv(trans_markov_matrix_g1, here("./output/frog_trans_markov_g1.csv"))
+write_csv(trans_markov_matrix_g2, here("./output/frog_trans_markov_g2.csv"))
+write_csv(trans_markov_matrix_g3, here("./output/frog_trans_markov_g3.csv"))
 
 #calculated weighed networks using iGraph package
 weighted_networks <- function(data){
@@ -571,10 +564,10 @@ plot(community_networks_weighted[["pond_5_cycle_11"]], layout=layout.circle, edg
 
 
 #save data
-#saveRDS(community_networks_weighted,file="output/frog_community_networks_weighted.rds")
-#saveRDS(community_networks_weighted_g1,file="output/frog_community_networks_weighted_g1.rds")
-#saveRDS(community_networks_weighted_g2,file="output/frog_community_networks_weighted_g2.rds")
-#saveRDS(community_networks_weighted_g3,file="output/frog_community_networks_weighted_g3.rds")
+saveRDS(community_networks_weighted,file=here("./output/frog_community_networks_weighted.rds"))
+saveRDS(community_networks_weighted_g1,file=here("./output/frog_community_networks_weighted_g1.rds"))
+saveRDS(community_networks_weighted_g2,file=here("./output/frog_community_networks_weighted_g2.rds"))
+saveRDS(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
 ```
 ##whole network statistics on weighted static graphs
 We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package, like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality())
@@ -583,10 +576,10 @@ We can now calculate a number of statistics on basic "static" weighted transitio
 This is the ratio of actual links vs. possible links. So we would assume that all states can be reached from all states. But, in our case we can have multiple edges occur multiple times. So we can either ignore those, or think about how to incorporate them 
 ```{r}
 #load data
-community_networks_weighted<-readRDS("output/frog_community_networks_weighted.rds")
-community_networks_weighted_g1<-readRDS("output/frog_community_networks_weighted_g1.rds")
-community_networks_weighted_g2<-readRDS("output/frog_community_networks_weighted_g2.rds")
-community_networks_weighted_g3<-readRDS("output/frog_community_networks_weighted_g3.rds")
+community_networks_weighted<-readRDS(here("./output/frog_community_networks_weighted.rds"))
+community_networks_weighted_g1<-readRDS(here("./output/frog_community_networks_weighted_g1.rds"))
+community_networks_weighted_g2<-readRDS(here("./output/frog_community_networks_weighted_g2.rds"))
+community_networks_weighted_g3<-readRDS(here("./output/frog_community_networks_weighted_g3.rds"))
 
 #This function calculates various network metrics for a list of igraph objects
 analyze_network_metrics <- function(network_list, join_data = NULL) {
@@ -663,7 +656,7 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
   return(results)
 }
 
-sp_num<-read_csv("output/frog_pond_cycle_NoSpec.csv")  %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
+sp_num<-read_csv(here("./output/frog_pond_cycle_NoSpec.csv"))  %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
 
 state_connectance_w <- analyze_network_metrics(community_networks_weighted, sp_num)
 
@@ -858,10 +851,10 @@ temporal_networks <- function(transitions_data, states_data = NULL) {
 }
 
 #get data
-community_transitions<-read_csv("output/frog_transit_states.csv")
-community_transitions_g1<-read_csv("output/frog_transit_states_g1.csv")
-community_transitions_g2<-read_csv("output/frog_transit_states_g2.csv")
-community_transitions_g3<-read_csv("output/frog_transit_states_g3.csv")
+community_transitions<-read_csv(here("./output/frog_transit_states.csv"))
+community_transitions_g1<-read_csv(here("./output/frog_transit_states_g1.csv"))
+community_transitions_g2<-read_csv(here("./output/frog_transit_states_g2.csv"))
+community_transitions_g3<-read_csv(here("./output/frog_transit_states_g3.csv"))
 
 #run function with data
 temporal_trans_networks <- temporal_networks(community_transitions)
@@ -871,10 +864,10 @@ temporal_trans_networks_g3 <- temporal_networks(community_transitions_g3)
 
 
 #save networks
-saveRDS(temporal_trans_networks,"output/frog_temp_transit_network.rds")
-saveRDS(temporal_trans_networks_g1,"output/frog_temp_transit_network_g1.rds")
-saveRDS(temporal_trans_networks_g2,"output/frog_temp_transit_network_g2.rds")
-saveRDS(temporal_trans_networks_g3,"output/frog_temp_transit_network_g3.rds")
+saveRDS(temporal_trans_networks,here("./output/frog_temp_transit_network.rds"))
+saveRDS(temporal_trans_networks_g1,here("./output/frog_temp_transit_network_g1.rds"))
+saveRDS(temporal_trans_networks_g2,here("./output/frog_temp_transit_network_g2.rds"))
+saveRDS(temporal_trans_networks_g3,here("./output/frog_temp_transit_network_g3.rds"))
 
 ```
 
@@ -882,7 +875,7 @@ saveRDS(temporal_trans_networks_g3,"output/frog_temp_transit_network_g3.rds")
 ```{r}
 #get reachable nodes
 # Extract the network and node mapping
-test_p1_c1 <- temporal_networks[["pond_1_cycle_1"]]
+test_p1_c1 <- temporal_trans_networks[["pond_1_cycle_1"]]
 dyn_net <- test_p1_c1$network
 node_mapping <- test_p1_c1$node_mapping  # Ensure node mapping is retrieved
 
@@ -927,11 +920,11 @@ print(reachable_nodes_list)
 We will calcluate temporal distribution of events, in this case when a new state appears. This gives us a good idea of when and how changes are clumped in time or not. Values=1 indicate perfect (periodic) spacing, = 0 random, >0 clumping. Note, we need to decide if we include empty states in this calculation
 ```{r}
 #get data, we'll just use basic community state data for simplicity
-community_states<-read_csv("output/frog_CommunityStates.csv")
-community_statesNonone<-read_csv("output/frog_CommunityStates.csv")%>%subset(state!="none")
-community_states_g1<-read_csv("output/frog_CommunityStates_g1.csv")
-community_states_g2<-read_csv("output/frog_CommunityStates_g2.csv")
-community_states_g3<-read_csv("output/frog_CommunityStates_g3.csv")
+community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
+community_statesNonone<-read_csv(here("./output/frog_CommunityStates.csv"))%>%subset(state!="none")
+community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
+community_states_g2<-read_csv(here("./output/frog_CommunityStates_g2.csv"))
+community_states_g3<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
 
 # Function to compute burstiness coefficient B
 calculate_burstiness <- function(df) {
@@ -1120,7 +1113,7 @@ summarize_memory <- function(memory_results) {
   return(summary_stats)
 }
 
-memory_results <- memory_analysis(community_states)%>%
+memory_results <- memory_analysis(community_states)
 memory_results_g1 <- memory_analysis(community_states_g1)
 memory_results_g2 <- memory_analysis(community_states_g2)
 memory_results_g3 <- memory_analysis(community_states_g3)
@@ -1130,10 +1123,10 @@ burst_mem_g1<-left_join(burstiness_results_g1,memory_results_g1)
 burst_mem_g2<-left_join(burstiness_results_g2,memory_results_g2)
 burst_mem_g3<-left_join(burstiness_results_g3,memory_results_g3)
 
-write_csv(burst_mem,"output/frog_comm_state_burstmem.csv")
-write_csv(burst_mem_g1,"output/frog_comm_state_burstmem_g1.csv")
-write_csv(burst_mem_g2,"output/frog_comm_state_burstmem_g2.csv")
-write_csv(burst_mem_g3,"output/frog_comm_state_burstmem_g3.csv")
+write_csv(burst_mem,here("./output/frog_comm_state_burstmem.csv"))
+write_csv(burst_mem_g1,here("./output/frog_comm_state_burstmem_g1.csv"))
+write_csv(burst_mem_g2,here("./output/frog_comm_state_burstmem_g2.csv"))
+write_csv(burst_mem_g3,here("./output/frog_comm_state_burstmem_g3.csv"))
 
 #combine with other network metrics
 
@@ -1154,10 +1147,10 @@ Astate_connectance_w_g3 <- left_join(
   burst_mem_g3 %>% mutate(pond = as.character(pond), cycle = as.character(cycle)),
   by = c("pond", "cycle"))
 
-write_csv(Astate_connectance_w, "output/frog_transition_matrix_metrics.csv")
-write_csv(Astate_connectance_w_g1, "output/frog_transition_matrix_metrics_g1.csv")
-write_csv(Astate_connectance_w_g2, "output/frog_transition_matrix_metrics_g2.csv")
-write_csv(Astate_connectance_w_g3, "output/frog_transition_matrix_metrics_g3.csv")
+write_csv(Astate_connectance_w, here("./output/frog_transition_matrix_metrics.csv"))
+write_csv(Astate_connectance_w_g1, here("./output/frog_transition_matrix_metrics_g1.csv"))
+write_csv(Astate_connectance_w_g2, here("./output/frog_transition_matrix_metrics_g2.csv"))
+write_csv(Astate_connectance_w_g3, here("./output/frog_transition_matrix_metrics_g3.csv"))
 
 
 ggplot(memory_results, aes(x=pond, y=time_memory, color=cycle))+
@@ -1174,11 +1167,6 @@ ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
   theme_bw()+
   facet_wrap(~pond)
 
-
-
-write_csv(burtiness_results,"output/frog_comm_state_burstiness.csv")
-
-
 #test for differences
 modelM<-lm(time_memory~(cycle)*as.factor(pond), data=memory_results)
 library(car)
@@ -1193,7 +1181,7 @@ let's add the burstiness and memory data to the rest of the network data.
 Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can caluclate this with Pielou's eveness index.
 ```{r}
 #load edge frequency matrix
-trans_freq<-read_csv("output/frog_trans_markov.csv")
+trans_freq<-read_csv(here("./output/frog_trans_markov.csv"))
 
 #calculate eveness of transitions
 calc_evenness<-function(df){
@@ -1243,57 +1231,4 @@ plot(cent)
 
 communities <- communities(tna_T)
 plot(communities, method="fast_greedy", pieBorder=FALSE)
-```
-#sequence analysis
-Ok no let's try out sequence analysis
-Sequence analysis can be used to compare sequences to each other, e.g. focusing on dissimilarities between sequences. This can be about how similar unique states are that form a sequence, the distribution of states, their timing, their  duration and sequence.
-So in many ways it overlaps with what we tried to do above already.
-
-## 
-```{r}
-library(TraMineR)
-library(TraMineRextras)
-library(WeightedCluster)
-library(seqhandbook)
-community_states<-read_csv("output/frog_CommunityStates.csv")
-#transform this into a wide format so each row is for unique pond& year combination, and columns are dates for each state.
-
-all_days<-1:365
-
-expanded <- community_states %>%
-  rowwise() %>%
-  mutate(day = list(onset:terminus)) %>%
-  unnest(day) %>%
-  ungroup()
-
-# Get all combinations of pond, cycle, day
-all_combos <- expand.grid(
-  pond = unique(community_states$pond),
-  cycle = unique(community_states$cycle),
-  day = all_days
-) %>%
-  as_tibble()
-
-# Join with the expanded states
-daily_states <- all_combos %>%
-  left_join(expanded %>% select(pond, cycle, day, state),
-            by = c("pond", "cycle", "day")) %>%
-  mutate(state = replace_na(state, "none"))
-
-# Now reshape to wide: one row per pond-cycle, one column per day
-seq_data <- daily_states %>%
-  arrange(pond, cycle, day) %>%
-  pivot_wider(names_from = day, values_from = state)
-
-group_vars<-seq_data%>%select(pond, cycle)
-
-# Select only the sequence columns
-state_seq <- seq_data %>% select(-pond, -cycle)
-
-#define the sequence object
-seq_obj<-seqdef(state_seq)
-# State distribution plot by pond
-seqplot(seq_obj[1:3,1:50], type="d", border = NA,cex.legend = 0.3, ncol = 6, cex.axis = 0.8, legend.prop = 0.3,)
-seqplot(seq_obj[23:44,100:365], type="I", border = NA,cex.legend = 0.3, ncol = 6, cex.axis = 0.8, legend.prop = 0.3,sortv = "from.start")
-
 ```

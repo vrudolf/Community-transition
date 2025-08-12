@@ -43,14 +43,14 @@ We will examine how climate variables are linked to different aspects of communi
 Let's load the community matrix and climate data (see "Community transition code.Rdm" and "Climate data preparation.Rdm")
 ```{r get data, message=F}
 #get summary metrics of the transition matrix
-state_connectance_w<-read_csv("output/frog_transition_matrix_metrics.csv") #raw data transition matrix 
+state_connectance_w<-read_csv(here("./output/frog_transition_matrix_metrics.csv")) #raw data transition matrix 
 #we have 3 additional version of the transition matrix that ignore a gap of 1, 2, or 3 day in the calling of a species and treat it as a continuous period. 
-state_connectance_w_g1<-read_csv("output/frog_transition_matrix_metrics_g1.csv") 
-state_connectance_w_g2<-read_csv("output/frog_transition_matrix_metrics_g2.csv")
-state_connectance_w_g3<-read_csv("output/frog_transition_matrix_metrics_g3.csv")
+state_connectance_w_g1<-read_csv(here("output","frog_transition_matrix_metrics_g1.csv")) 
+state_connectance_w_g2<-read_csv(here("output","frog_transition_matrix_metrics_g2.csv"))
+state_connectance_w_g3<-read_csv(here("output","frog_transition_matrix_metrics_g3.csv"))
 
 #get annual climate data summary metrics 
-sumclima<-read_csv("output/frog_climate_data_annual_scaled.csv")%>%subset(cycle<23)
+sumclima<-read_csv(here("output","frog_climate_data_annual_scaled.csv"))%>%subset(cycle<23)
 
 #combine climate and network statistics
 netclim <- reduce(list(sumclima, state_connectance_w), full_join) %>%
@@ -159,7 +159,7 @@ Based on these relationship, we definitely want to keep No_Spec as covariate whe
 Ok so let's analyze the network metrics and how they are linked to climate variables. We have to options: (1) use PC1 and PC2 in the analysis which strongly reduces the number of analyses we need. But it also is hard to interpete, and can miss more nuanced relationship of individual variables. So we will do both, PC based GLMM and individual network metric GLMM analyses
 ```{r, GLMM network metric climate analysis}
 #GLMM models
-currentdata=netclimPC_g1
+currentdata<-netclim
 
 mS <- lmer(No_Spec~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=currentdata)
 mb <- lmer(betweenness~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
@@ -541,13 +541,13 @@ ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
 #Network vs Weather PCA analysis
 Instead of using all the different weather variables, we can also use the PCA of climate. Only two were important, which makes this a little bit easier
 ```{r}
-climatePCA<-read_csv("output/frog_WeatherPCA.csv")
+climatePCA<-read_csv(here("./output/frog_WeatherPCA.csv"))
 netclimPC<-left_join(netclim,climatePCA)
 netclimPC_g1<-left_join(netclim_g1,climatePCA)
 netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
-currentPCdata=netclimPC_g3
+currentPCdata<-netclimPC_g1
 
 mSPC <- lmer(No_Spec~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mbPC <- lmer(betweenness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
