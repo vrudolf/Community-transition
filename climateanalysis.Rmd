@@ -1,0 +1,693 @@
+---
+title: "Climate & community"
+author: "Volker Rudolf"
+date: "2025-06-12"
+output: html_document
+---
+---
+title: "Climate_community"
+output: html_document
+date: "2025-05-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Goals
+We will examine how climate variables are linked to different aspects of community state transitions. THis is focused on frog calling data from 8 different ponds across 22 years. Climate data is taking from local weather stations, and frog calling data was converted to transition matrix indicating how community states (i.e. a specific combination of species) transition over time within a year.
+
+
+# Load packages
+```{r, warning=FALSE, message=FALSE}
+ #Load packages
+  #list of packages that are needed
+  pack<-c("tidyverse",
+          "knitr",
+          "here",
+          "car",
+          "lme4"
+          )
+  #check whether packages are installed and load them, if not get and then load
+ package.check <- lapply(pack, FUN = function(x){
+    if (!require(x, character.only = TRUE)) 
+      {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+      }
+    })
+   #search() #verify that packages are loaded
+
+```
+
+Let's load the community matrix and climate data (see "Community transition code.Rdm" and "Climate data preparation.Rdm")
+```{r get data, message=F}
+#get summary metrics of the transition matrix
+state_connectance_w<-read_csv("output/frog_transition_matrix_metrics.csv") #raw data transition matrix 
+#we have 3 additional version of the transition matrix that ignore a gap of 1, 2, or 3 day in the calling of a species and treat it as a continuous period. 
+state_connectance_w_g1<-read_csv("output/frog_transition_matrix_metrics_g1.csv") 
+state_connectance_w_g2<-read_csv("output/frog_transition_matrix_metrics_g2.csv")
+state_connectance_w_g3<-read_csv("output/frog_transition_matrix_metrics_g3.csv")
+
+#get annual climate data summary metrics 
+sumclima<-read_csv("output/frog_climate_data_annual_scaled.csv")%>%subset(cycle<23)
+
+#combine climate and network statistics
+netclim <- reduce(list(sumclima, state_connectance_w), full_join) %>%
+  select(pond, cycle, Pond_Cycle, everything())
+netclim_g1 <- reduce(list(sumclima, state_connectance_w_g1), full_join) %>%
+  select(pond, cycle, Pond_Cycle, everything())
+netclim_g2 <- reduce(list(sumclima, state_connectance_w_g2), full_join) %>%
+  select(pond, cycle, Pond_Cycle, everything())
+netclim_g3 <- reduce(list(sumclima, state_connectance_w_g3), full_join) %>%
+  select(pond, cycle, Pond_Cycle, everything())
+
+```
+
+
+before we get into analysis lets look at correlation between network metrics
+```{r metric correlations}
+library(ggcorrplot)
+metrics<-state_connectance_w%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g1<-state_connectance_w_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g2<-state_connectance_w_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g3<-state_connectance_w_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+
+corr<-round(cor(metrics, use = "complete.obs"),1)
+p.mat<-cor_pmat(metrics)
+ggcorrplot(corr, hc.order=TRUE, type="upper",lab="TRUE", p.mat=p.mat)
+
+corrg1<-round(cor(metrics_g1, use = "complete.obs"),1)
+p.mat<-cor_pmat(metrics_g1)
+ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)
+
+corrg3<-round(cor(metrics_g3, use = "complete.obs"),1)
+p.mat<-cor_pmat(metrics_g3)
+ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)
+
+ggplot(metrics_g1, aes(x=No_Spec, y=Unique_Nodes))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(metrics_g1, aes(x=Unique_Nodes, y=totalEdges))+geom_point()+stat_smooth(method="lm")+theme_bw()
+
+```
+ 
+let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship
+```{r networkPCA}
+library("factoextra")
+library("FactoMineR")
+metricpca<- prcomp(metrics, scale = TRUE)
+print(metricpca)
+
+metricpca_g1<- prcomp(metrics_g1, scale = TRUE)
+metricpca_g3<- prcomp(metrics_g3, scale = TRUE)
+
+
+#plot PC %explanation
+fviz_eig(metricpca, col.var="blue")
+fviz_eig(metricpca_g1, col.var="blue")
+fviz_eig(metricpca_g3, col.var="blue")
+
+#plot variables for first 2 PCA
+fviz_pca_var(metricpca,
+             repel = TRUE
+             )
+
+#plot both loading and year values
+fviz_pca_biplot(metricpca,
+                label="var",
+                geom_ind="point",
+,                col.var = "black",               
+                gradient.cols = c("blue", "green"),
+                repel = TRUE,
+)
+fviz_pca_biplot(metricpca_g1,
+                label="var",
+                geom_ind="point",
+,                col.var = "black",               
+                gradient.cols = c("blue", "green"),
+                repel = TRUE,
+)
+fviz_pca_biplot(metricpca_g3,
+                label="var",
+                geom_ind="point",
+,                col.var = "black",               
+                gradient.cols = c("blue", "green"),
+                repel = TRUE,
+)
+
+
+
+metricPCA<-cbind(netclim[,1:2],metricpca$x[,1:2])
+metricPCA_g1<-cbind(netclim[,1:2],metricpca_g1$x[,1:2])
+metricPCA_g3<-cbind(netclim[,1:2],metricpca_g3$x[,1:2])
+
+dfs_pca<-list(sumclima, metricPCA, burst_mem)
+netPCAclim<-reduce(dfs_pca, full_join)%>%select(pond, cycle, everything())
+
+dfs_pcag1<-list(sumclima, metricPCA_g1, burst_mem)
+netPCAclim_g1<-reduce(dfs_pcag1, full_join)%>%select(pond, cycle, everything())
+
+dfs_pcag3<-list(sumclima, metricPCA_g3, burst_mem)
+netPCAclim_g3<-reduce(dfs_pcag3, full_join)%>%select(pond, cycle, everything())
+
+
+```
+So two PCA are enough to explain a lot of variation in all these variables, and the first explains by far the most. It's also interesting that the correlation between variables are robust and don't change if we ignore small 1, 2, or 3 day gaps. 
+Based on these relationship, we definitely want to keep No_Spec as covariate when we analyze the other metrics, and there is no point in including totalEdges and  Unique nodes since both are so correlated, and total Edges seems to be more different from No species than unique nodes and bit more informative on other aspects of the network.
+
+
+#Network structure & climate analysis
+Ok so let's analyze the network metrics and how they are linked to climate variables. We have to options: (1) use PC1 and PC2 in the analysis which strongly reduces the number of analyses we need. But it also is hard to interpete, and can miss more nuanced relationship of individual variables. So we will do both, PC based GLMM and individual network metric GLMM analyses
+```{r, GLMM network metric climate analysis}
+#GLMM models
+currentdata=netclimPC_g1
+
+mS <- lmer(No_Spec~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=currentdata)
+mb <- lmer(betweenness~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mc <- lmer(Connectance~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mE <- lmer(log(totalEdges)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mm <- lmer(modularity~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mD <- lmer((mean_Distance)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mcen <- lmer(harm.centrality~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mBurst <- lmer(B~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mMem <- lmer(time_memory~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+
+# Create a list of models with descriptive names
+models <- list(
+  "No_Species" = mS,
+  "Betweenness" = mb,
+  "Connectance" = mc,
+  "Total_Edges" = mE,
+  "Modularity" = mm,
+  "Mean_Distance" = mD,
+  "Harmonic_Centrality" = mcen,
+  "Burstiness" = mBurst,
+  "Memory"= mMem
+)
+
+# Function to extract ANOVA results and coefficient information
+extract_anova_results <- function(model, model_name) {
+  anova_result <- Anova(model)
+  coef_summary <- summary(model)$coefficients
+  
+  # Get fixed effects names (excluding random effects)
+  fixed_effects <- rownames(coef_summary)
+  anova_effects <- rownames(anova_result)
+  
+  # Initialize vectors for effect sizes and standard errors
+  effect_sizes <- rep(NA, length(anova_effects))
+  std_errors <- rep(NA, length(anova_effects))
+  
+  # For each ANOVA effect, find corresponding coefficient(s)
+  for(i in 1:length(anova_effects)) {
+    effect_name <- anova_effects[i]
+    
+    # Find matching coefficients
+    matching_coefs <- grep(effect_name, fixed_effects, value = TRUE)
+    
+    # If no direct match, try alternative matching patterns
+    if(length(matching_coefs) == 0) {
+      if(grepl(":", effect_name)) {
+        # Handle interactions
+        terms <- strsplit(effect_name, ":")[[1]]
+        matching_coefs <- fixed_effects[sapply(fixed_effects, function(x) {
+          all(sapply(terms, function(term) grepl(term, x)))
+        })]
+      } else {
+        # Single term
+        matching_coefs <- fixed_effects[grepl(effect_name, fixed_effects)]
+      }
+    }
+    
+    # Take the first matching coefficient if multiple found
+    if(length(matching_coefs) > 0) {
+      primary_coef <- matching_coefs[1]
+      coef_index <- which(fixed_effects == primary_coef)
+      if(length(coef_index) > 0) {
+        effect_sizes[i] <- round(coef_summary[coef_index, "Estimate"], 4)
+        std_errors[i] <- round(coef_summary[coef_index, "Std. Error"], 4)
+      }
+    }
+  }
+  
+  # Create results data frame
+  results_df <- data.frame(
+    Model = model_name,
+    Effect = anova_effects,
+    Effect_Size = effect_sizes,
+    Std_Error = std_errors,
+    Chisq = round(anova_result$Chisq, 3),
+    Df = anova_result$Df,
+    P_value = round(anova_result$`Pr(>Chisq)`, 4),
+    Significance = ifelse(anova_result$`Pr(>Chisq)` < 0.001, "***",
+                         ifelse(anova_result$`Pr(>Chisq)` < 0.01, "**",
+                               ifelse(anova_result$`Pr(>Chisq)` < 0.05, "*",
+                                     ifelse(anova_result$`Pr(>Chisq)` < 0.1, ".", ""))))
+  )
+  
+  return(results_df)
+}
+
+# Apply the function to all models
+all_results <- do.call(rbind, mapply(extract_anova_results, models, names(models), SIMPLIFY = FALSE))
+
+# Reset row names
+rownames(all_results) <- NULL
+
+# Display the complete results table
+print("Complete ANOVA Results for All Models:")
+print(all_results)
+
+# Save to CSV
+#write.csv(all_results, "combined_anova_results.csv", row.names = FALSE)
+
+# Create a wide format table showing p-values for each effect across models
+pivot_table <- all_results %>%
+  select(Model, Effect, P_value) %>%
+  pivot_wider(names_from = Model, values_from = P_value) %>%
+  arrange(Effect)
+
+print("P-values across all models:")
+print(pivot_table)
+
+# Create effect size comparison table
+effect_size_table <- all_results %>%
+  select(Model, Effect, Effect_Size) %>%
+  pivot_wider(names_from = Model, values_from = Effect_Size) %>%
+  arrange(Effect)
+
+print("Effect sizes across all models:")
+print(effect_size_table)
+
+# Create standard error comparison table
+std_error_table <- all_results %>%
+  select(Model, Effect, Std_Error) %>%
+  pivot_wider(names_from = Model, values_from = Std_Error) %>%
+  arrange(Effect)
+
+print("Standard errors across all models:")
+print(std_error_table)
+
+# Create significance pattern table with proper sorting
+sig_table <- all_results %>%
+  select(Model, Effect, Significance) %>%
+  # Add interaction level column (count colons in Effect names)
+  mutate(interaction_level = str_count(Effect, ":")) %>%
+  # Sort by interaction level first, then alphabetically within each level
+  arrange(interaction_level, Effect) %>%
+  # Remove the helper column and create wide format
+  select(-interaction_level) %>%
+  pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
+
+print(sig_table)
+```
+Now let's do it with the PC instead 
+```{r, PCmetric climate analysis}
+pca1<-lmer(PC1~meanMinT+
+             meanMaxT+
+             meanPrec+
+             burstinessRain+
+             meanMinT:meanMaxT+
+             meanMinT:meanPrec+
+             meanMinT:burstinessRain+
+             meanMaxT:burstinessRain+
+             meanPrec:burstinessRain+
+             meanMinT:meanMaxT:burstinessRain+
+             #meanMinT:meanMaxT:burstinessRain:meanPrec+
+             (1|pond)+cycle, 
+           data=netPCAclim)
+pca1_g1<-lmer(PC1~meanMinT+
+             meanMaxT+
+             meanPrec+
+             burstinessRain+
+             meanMinT:meanMaxT+
+             meanMinT:meanPrec+
+             meanMinT:burstinessRain+
+             meanMaxT:burstinessRain+
+             meanPrec:burstinessRain+
+             meanMinT:meanMaxT:burstinessRain+
+             #meanMinT:meanMaxT:burstinessRain:meanPrec+
+             +(1|pond)+cycle,
+             data=netPCAclim_g1)
+pca1_g3<-lmer(PC1~meanMinT+
+             meanMaxT+
+             meanPrec+
+             burstinessRain+
+             meanMinT:meanMaxT+
+             meanMinT:meanPrec+
+             meanMinT:burstinessRain+
+             meanMaxT:burstinessRain+
+             meanPrec:burstinessRain+
+             meanMinT:meanMaxT:burstinessRain+
+             #meanMinT:meanMaxT:burstinessRain:meanPrec+
+             (1|pond)+cycle,
+             data=netPCAclim_g3)
+
+Anova(pca1)
+Anova(pca1_g1)
+Anova(pca1_g3)
+
+
+pca2<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=netPCAclim)
+pca2_g1<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond), data=netPCAclim_g1)
+pca2_g3<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=netPCAclim_g3)
+Anova(pca2)
+Anova(pca2_g1)
+Anova(pca2_g3)
+
+```
+Let's make some plots
+```{r}
+# Prepare data for plotting - remove rows with missing effect sizes
+plot_data <- all_results %>%
+  filter(!is.na(Effect_Size) & !is.na(Std_Error)) %>%
+  mutate(
+    # Create confidence intervals (mean ± 1 SE)
+    CI_lower = Effect_Size - Std_Error,
+    CI_upper = Effect_Size + Std_Error,
+    # Create a combined label for better readability
+    Effect_Model = paste(Effect, "-", Model, sep = " "),
+    # Add significance indicator for point shapes
+    Significant = ifelse(P_value < 0.05, "Significant", "Non-significant"),
+    # Count interaction level and create ordering
+    interaction_level = str_count(Effect, ":"),
+    # Create ordering factor for effects
+    effect_order = case_when(
+      interaction_level == 0 ~ paste("1_Main:", Effect),
+      interaction_level == 1 ~ paste("2_Two-way:", Effect),
+      interaction_level == 2 ~ paste("3_Three-way:", Effect),
+      interaction_level == 3 ~ paste("4_Four-way:", Effect),
+      TRUE ~ paste("5_Other:", Effect)
+  )
+  ) %>%
+  # Reorder Effect factor based on interaction level, then alphabetically within level
+  arrange(-interaction_level, Effect) %>%
+  mutate(Effect = factor(Effect, levels = unique(Effect)))
+
+
+# Create the main effect size plot
+effect_plot <- ggplot(plot_data, aes(x = Effect_Size, y = Effect, color = Model)) +
+  # Add vertical line at zero for reference
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", alpha = 0.7) +
+  
+  # Add error bars (whiskers)
+  geom_errorbarh(aes(xmin = CI_lower, xmax = CI_upper), 
+                 height = 0.3, alpha = 0.7, size = 0.8) +
+  
+  # Add points for effect sizes
+  geom_point(aes(shape = Significant), size = 3, alpha = 0.8) +
+  
+  # Customize scales
+  scale_shape_manual(values = c("Significant" = 16, "Non-significant" = 1)) +
+  scale_color_viridis_d(name = "Model") +
+  
+  # Labels and theme
+  labs(
+    title = "Effect Sizes Across Models",
+    subtitle = "Points show coefficient estimates, whiskers show ± 1 Standard Error",
+    x = "Effect Size (Coefficient Estimate)",
+    y = "Fixed Effects",
+    shape = "Significance (p < 0.05)"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    legend.position = "right",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 11, color = "gray40"),
+    axis.text.y = element_text(size = 10),
+    axis.text.x = element_text(size = 10),
+    axis.title = element_text(size = 12),
+    legend.title = element_text(size = 10),
+    legend.text = element_text(size = 9)
+  ) +
+  
+  # Add better spacing
+  theme(plot.margin = margin(20, 20, 20, 20))
+
+# Display the plot
+print(effect_plot)
+
+# Alternative version: Faceted by model for clearer comparison
+faceted_plot <- ggplot(plot_data, aes(x = Effect_Size, y = Effect)) +
+  # Add vertical line at zero
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", alpha = 0.7) +
+  
+  # Add error bars
+  geom_errorbarh(aes(xmin = CI_lower, xmax = CI_upper, color = Significant), 
+                 height = 0.2, size = 0.8) +
+  
+  # Add points
+  geom_point(aes(color = Significant, shape = Significant), size = 2.5, alpha = 0.8) +
+  
+  # Facet by model
+  facet_wrap(~ Model, scales = "free_x", ncol = 3) +
+  
+  # Customize scales
+  scale_color_manual(values = c("Significant" = "#E31A1C", "Non-significant" = "#377EB8")) +
+  scale_shape_manual(values = c("Significant" = 16, "Non-significant" = 1)) +
+  
+  # Labels and theme
+  labs(
+    title = "Effect Sizes by Model",
+    subtitle = "Points show coefficient estimates, whiskers show ± 1 Standard Error",
+    x = "Effect Size (Coefficient Estimate)",
+    y = "Fixed Effects",
+    color = "Significance",
+    shape = "Significance"
+  ) +
+  
+  theme_minimal() +
+  theme(
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 10),
+    legend.position = "bottom",
+    plot.title = element_text(size = 14, face = "bold"),
+    plot.subtitle = element_text(size = 11, color = "gray40"),
+    axis.text.y = element_text(size = 9),
+    axis.text.x = element_text(size = 9),
+    axis.title = element_text(size = 11)
+  )
+
+print("Faceted plot:")
+print(faceted_plot)
+
+# Create a summary table of effect sizes
+summary_stats <- plot_data %>%
+  group_by(Effect) %>%
+  summarise(
+    n_models = n(),
+    mean_effect = round(mean(Effect_Size, na.rm = TRUE), 4),
+    median_effect = round(median(Effect_Size, na.rm = TRUE), 4),
+    min_effect = round(min(Effect_Size, na.rm = TRUE), 4),
+    max_effect = round(max(Effect_Size, na.rm = TRUE), 4),
+    n_significant = sum(Significant == "Significant"),
+    prop_significant = round(n_significant / n_models, 2),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(abs(mean_effect)))
+
+print("Summary of effect sizes across models:")
+print(summary_stats)
+
+# Save plots
+#ggsave("effect_sizes_plot.png", effect_plot, width = 12, height = 8, dpi = 300)
+#ggsave("effect_sizes_faceted.png", faceted_plot, width = 14, height = 10, dpi = 300)
+
+
+```
+
+Look at extreme years
+```{r}
+#get raw climate data
+sumclimaY<-read.csv("output/frog_climate_data_annualsum.csv")
+
+#define extreme years see "climate data preparation" code for cutoffs
+#hot years
+sumclimaY$exthighTemp<-ifelse(sumclimaY$meanMaxT> 26.79, "Yes", "No") #this is cycle 5, 11, 12, 22, 23
+
+#years with long hot periods
+sumclimaY$extLongHot<-ifelse(sumclimaY$day100> 64, "Yes", "No") #this is cycle 5, 11, 22, 23
+
+#cold years
+sumclimaY$extlowTemp<-ifelse(sumclimaY$meanMinT< 13.3, "Yes", "No") #this is cycle 2, 8, 10
+
+#years with long droughts
+sumclimaY$extDry<-ifelse(sumclimaY$Dext> 750, "Yes", "No") #this is cycle 11,12,13,15,23
+
+#years with high annual precipitation
+sumclimaY$Wet<-ifelse(sumclimaY$meanPrec> 4, "Yes", "No") #this is cycle 2,4,15,18
+
+#years with low annual precipitation
+sumclimaY$LowPrec<-ifelse(sumclimaY$meanPrec< 2.5, "Yes", "No") #this is cycle 5,10,11
+
+#years with bursty rainfall
+sumclimaY$Bursty<-ifelse(sumclimaY$burstinessRain> 0.09, "Yes", "No") #this is cycle 1 15 22 23
+
+#join data
+sumclimaYSub<-sumclimaY%>%select(cycle, exthighTemp,extLongHot, extDry,Wet,LowPrec,Bursty)
+netclimR<-left_join(netclim,sumclimaYSub)
+
+
+ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+
+ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+
+
+```
+
+#Network vs Weather PCA analysis
+Instead of using all the different weather variables, we can also use the PCA of climate. Only two were important, which makes this a little bit easier
+```{r}
+climatePCA<-read_csv("output/frog_WeatherPCA.csv")
+netclimPC<-left_join(netclim,climatePCA)
+netclimPC_g1<-left_join(netclim_g1,climatePCA)
+netclimPC_g2<-left_join(netclim_g2,climatePCA)
+netclimPC_g3<-left_join(netclim_g3,climatePCA)
+
+currentPCdata=netclimPC_g3
+
+mSPC <- lmer(No_Spec~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mbPC <- lmer(betweenness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mcPC <- lmer(Connectance~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mEPC <- lmer(log(totalEdges)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mmPC <- lmer(modularity~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mDPC <- lmer((mean_Distance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mcenPC <- lmer(harm.centrality~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mBurstPC <- lmer(B~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mMemPC <- lmer(time_memory~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+
+
+
+# Create a list of models with descriptive names
+models <- list(
+  "No_Species" = mSPC,
+  "Betweenness" = mbPC,
+  "Connectance" = mcPC,
+  "Total_Edges" = mEPC,
+  "Modularity" = mmPC,
+  "Mean_Distance" = mDPC,
+  "Harmonic_Centrality" = mcenPC,
+  "Burstiness" = mBurstPC,
+  "Memory"= mMemPC
+)
+
+# Function to extract ANOVA results and coefficient information
+extract_anova_results <- function(model, model_name) {
+  anova_result <- Anova(model)
+  coef_summary <- summary(model)$coefficients
+  
+  # Get fixed effects names (excluding random effects)
+  fixed_effects <- rownames(coef_summary)
+  anova_effects <- rownames(anova_result)
+  
+  # Initialize vectors for effect sizes and standard errors
+  effect_sizes <- rep(NA, length(anova_effects))
+  std_errors <- rep(NA, length(anova_effects))
+  
+  # For each ANOVA effect, find corresponding coefficient(s)
+  for(i in 1:length(anova_effects)) {
+    effect_name <- anova_effects[i]
+    
+    # Find matching coefficients
+    matching_coefs <- grep(effect_name, fixed_effects, value = TRUE)
+    
+    # If no direct match, try alternative matching patterns
+    if(length(matching_coefs) == 0) {
+      if(grepl(":", effect_name)) {
+        # Handle interactions
+        terms <- strsplit(effect_name, ":")[[1]]
+        matching_coefs <- fixed_effects[sapply(fixed_effects, function(x) {
+          all(sapply(terms, function(term) grepl(term, x)))
+        })]
+      } else {
+        # Single term
+        matching_coefs <- fixed_effects[grepl(effect_name, fixed_effects)]
+      }
+    }
+    
+    # Take the first matching coefficient if multiple found
+    if(length(matching_coefs) > 0) {
+      primary_coef <- matching_coefs[1]
+      coef_index <- which(fixed_effects == primary_coef)
+      if(length(coef_index) > 0) {
+        effect_sizes[i] <- round(coef_summary[coef_index, "Estimate"], 4)
+        std_errors[i] <- round(coef_summary[coef_index, "Std. Error"], 4)
+      }
+    }
+  }
+  
+  # Create results data frame
+  results_df <- data.frame(
+    Model = model_name,
+    Effect = anova_effects,
+    Effect_Size = effect_sizes,
+    Std_Error = std_errors,
+    Chisq = round(anova_result$Chisq, 3),
+    Df = anova_result$Df,
+    P_value = round(anova_result$`Pr(>Chisq)`, 4),
+    Significance = ifelse(anova_result$`Pr(>Chisq)` < 0.001, "***",
+                         ifelse(anova_result$`Pr(>Chisq)` < 0.01, "**",
+                               ifelse(anova_result$`Pr(>Chisq)` < 0.05, "*",
+                                     ifelse(anova_result$`Pr(>Chisq)` < 0.1, ".", ""))))
+  )
+  
+  return(results_df)
+}
+
+# Apply the function to all models
+all_results <- do.call(rbind, mapply(extract_anova_results, models, names(models), SIMPLIFY = FALSE))
+
+# Reset row names
+rownames(all_results) <- NULL
+
+# Display the complete results table
+print("Complete ANOVA Results for All Models:")
+print(all_results)
+
+# Save to CSV
+#write.csv(all_results, "combined_anova_results.csv", row.names = FALSE)
+
+# Create a wide format table showing p-values for each effect across models
+pivot_table <- all_results %>%
+  select(Model, Effect, P_value) %>%
+  pivot_wider(names_from = Model, values_from = P_value) %>%
+  arrange(Effect)
+
+print("P-values across all models:")
+print(pivot_table)
+
+# Create effect size comparison table
+effect_size_table <- all_results %>%
+  select(Model, Effect, Effect_Size) %>%
+  pivot_wider(names_from = Model, values_from = Effect_Size) %>%
+  arrange(Effect)
+
+print("Effect sizes across all models:")
+print(effect_size_table)
+
+# Create standard error comparison table
+std_error_table <- all_results %>%
+  select(Model, Effect, Std_Error) %>%
+  pivot_wider(names_from = Model, values_from = Std_Error) %>%
+  arrange(Effect)
+
+print("Standard errors across all models:")
+print(std_error_table)
+
+# Create significance pattern table with proper sorting
+sig_table <- all_results %>%
+  select(Model, Effect, Significance) %>%
+  # Add interaction level column (count colons in Effect names)
+  mutate(interaction_level = str_count(Effect, ":")) %>%
+  # Sort by interaction level first, then alphabetically within each level
+  arrange(interaction_level, Effect) %>%
+  # Remove the helper column and create wide format
+  select(-interaction_level) %>%
+  pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
+
+print(sig_table)
+```
+

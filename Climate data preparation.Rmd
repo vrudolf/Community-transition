@@ -1,0 +1,255 @@
+---
+title: "Climate data preparation"
+author: "Volker Rudolf"
+date: "2025-06-12"
+output: html_document
+---
+---
+title: "Climate"
+output: html_document
+date: "2025-05-16"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#Goals
+The code here prepares the climate data from our frog pond location for general analysis, and looks at some climate patterns 
+
+# Load packages
+```{r, warning=FALSE, message=FALSE}
+ #Load packages
+  #list of packages that are needed
+  pack<-c("tidyverse",
+          "knitr",
+          "here",
+          "lubridate",
+          "paletteer"
+          )
+  #check whether packages are installed and load them, if not get and then load
+ package.check <- lapply(pack, FUN = function(x){
+    if (!require(x, character.only = TRUE)) 
+      {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+      }
+    })
+   #search() #verify that packages are loaded
+
+```
+
+# Temperature and precipitation data
+```{r formatdata}
+#get and organize raw daily climate observations from weather station
+climate<-read_csv("datasets/Climatedata2011_2024.csv")%>%select(DATE,PRCP,TAVG,TMAX,TMIN)
+climate$DATE<-as.Date(climate$DATE,format="%m/%d/%Y")
+climate<-climate%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
+
+#now this is usually on annual basis, but we need to align it with the "frog cycle" we used for the community analysis
+climate<-climate%>%mutate(cycle=case_when(
+  doy>340~year-1999,
+  .default=year-2000
+))
+climate<-climate%>%mutate(cycle_day=case_when(
+  doy>=339~doy-338,
+  .default=doy+27
+))
+
+sumclimaY<-climate%>%group_by(cycle)%>%
+  summarize(meanMaxT=mean(TMAX,na.rm = TRUE), 
+            meanMinT=mean(TMIN,na.rm = TRUE),
+            day100=sum(TMAX > 35,na.rm = TRUE),
+            meanPrec=mean(PRCP,na.rm=TRUE),
+            cumPrec=sum(PRCP, na.rm=TRUE))
+```
+
+Look at some of this weather data plotted
+```{r}
+ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanMaxT))+
+  geom_line()+
+  geom_point()+
+  theme_bw()+
+  geom_hline(aes(yintercept=25.975),linetype="dashed")
+
+ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=day100))+
+  geom_line()+
+  geom_point()+
+  theme_bw()+
+  geom_hline(aes(yintercept=37.6),linetype="dashed")
+
+ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanMinT))+
+  geom_line()+
+  geom_point()+
+  theme_bw()+
+  geom_hline(aes(yintercept=13.678),linetype="dashed")
+
+ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanPrec))+
+  geom_line()+
+  geom_point()+
+  theme_bw()+
+  geom_hline(aes(yintercept=3.545489),linetype="dashed")
+
+
+sumclimaM<-climate%>%group_by(cycle, month)%>%
+  summarize(MmeanMaxT=mean(TMAX,na.rm = TRUE), 
+            MmeanMinT=mean(TMIN,na.rm = TRUE), 
+            Mday100=sum(TMAX > 35,na.rm = TRUE),
+            MmeanPrec=mean(PRCP,na.rm=TRUE),
+            McumPrec=sum(PRCP, na.rm=TRUE))
+
+```
+
+Lets claculate how bursty rain fall is.
+```{r burstiness}
+# Define a function to calculate burstiness
+calculate_burstiness <- function(dates) {
+  if (length(dates) < 2) return(NA)  # Not enough rainy days
+  inter_event_times <- as.numeric(diff(sort(dates)))
+  mu <- mean(inter_event_times)
+  sigma <- sd(inter_event_times)
+  B<-if ((mu + sigma) == 0) NA else (sigma - mu) / (sigma + mu)
+  data.frame(
+    burstinessRain=B,
+    Rain_inter_event_time=mu
+  )
+}
+
+# Filter to only rainy days
+rainy_days <- climate %>% filter(PRCP > 0)
+
+# Group by year and compute burstiness
+burstiness_by_cycle <- rainy_days %>%
+  group_by(cycle) %>%
+  summarise(
+    stats = list(calculate_burstiness(DATE)))%>%
+  unnest(cols=c(stats))
+
+ggplot(burstiness_by_cycle, aes(x=cycle,y=burstinessRain))+geom_point()+theme_bw()
+ggplot(burstiness_by_cycle, aes(x=cycle,y=Rain_inter_event_time))+geom_point()+theme_bw()
+ggplot(burstiness_by_cycle, aes(x=burstinessRain,y=Rain_inter_event_time))+geom_point()+geom_smooth()+theme_bw()
+
+
+#add it to yearly climate data
+sumclimaYB<-left_join(sumclimaY,burstiness_by_cycle)
+```
+##drought data
+This is data on the drought index, which is calculated based on "missing" rain. It comes in range of severeness categories, so not as continuous values.
+```{r drought}
+
+drought<-read_csv("datasets/DroughtDataDCForest.csv")%>%select(ValidStart,None,D0,D1,D2,D3,D4)
+drought$DATE<-as.Date(drought$ValidStart,"%m/%d/%Y")
+drought<-drought%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
+drought<-drought%>%mutate(cycle=case_when(
+  doy>340~year-1999,
+  .default=year-2000
+))
+drought<-drought%>%mutate(cycle_day=case_when(
+  doy>=339~doy-338,
+  .default=doy+27
+))
+
+#combine the severity indexes into one drought severity metric. We do this by giveing more weight to more sever drought indexes
+drought<-drought%>%mutate(Dseverity=D0+D1*2+D2*3+D3*4+D4*4)
+sumdrought<-drought%>%group_by(cycle)%>%
+  summarize(Dsevmean=mean(Dseverity),Dext=max(Dseverity))
+ggplot(sumdrought, aes(x=cycle, y=Dext))+geom_line()+geom_point()+theme_bw()
+
+
+#add it to climate data
+sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<24)
+
+#noemalize the climate data since they are all on different scales.
+scaledsumclimaY <- data.frame(
+  cycle=sumclimaYBD[1],                      # keep the first column untouched
+  scale(sumclimaYBD[, -1])              # scale all other columns
+)
+
+write_csv(sumclimaYBD, "output/frog_climate_data_annualsum.csv")
+write_csv(scaledsumclimaY, "output/frog_climate_data_annual_scaled.csv")
+
+```
+
+PCA of weather data
+```{r}
+sumclimaY<-read.csv("output/frog_climate_data_annualsum.csv")
+scaledsumclimaY<-read.csv("output/frog_climate_data_annual_scaled.csv")
+
+library("factoextra")
+
+weather.pca <- prcomp(scaledsumclimaY[,-1], scale = TRUE)
+print(weather.pca)
+
+#plot PC %explanation
+fviz_eig(weather.pca, col.var="blue")
+
+#plot variables for first 2 PCA
+fviz_pca_var(weather.pca,
+             repel = TRUE
+             )
+
+#plot cycles in PCA space
+cycle_values <- scaledsumclimaY[, 1]
+cycl <- get_pca_ind(weather.pca)
+cycl
+
+pcavalues<-fviz_pca_ind(weather.pca,
+             col.ind = 1:nrow(scaledsumclimaY),  # Just test indexing
+             gradient.cols = c("blue", "green"),
+             repel = TRUE
+)
+
+#plot both loading and year values
+fviz_pca_biplot(weather.pca,
+                habillage = scaledsumclimaY[, 1],
+                col.var = "black",               
+                gradient.cols = c("blue", "green"),
+                repel = TRUE,
+)
+
+
+#since PC1 and PC2 explain most, let's save both in new file for later analysis
+#Extract PC1 and PC2 scores
+pc_scores <- as.data.frame(weather.pca$x[, 1:2])
+colnames(pc_scores) <- c("PC1", "PC2")            # Rename for clarity
+
+# Add cycle information back
+pc_scores$cycle <- scaledsumclimaY$cycle
+
+#Reorder columns: cycle, PC1, PC2
+pc_output <- pc_scores %>%select(cycle, PC1, PC2)
+
+# Save to CSV
+write.csv(pc_output, "output/frog_WeatherPCA.csv", row.names = FALSE)
+```
+
+So based on this, the most unusual cycles are 11 and 23 and 12, 22 (driest & hottest in order), 15 (dry but cold). 4 was the wettest cycle, and 5 is borderline but  shows up in several "extreme hot" categories
+
+
+Now finally let's look at some correlations of climate variables
+```{r climate metric correlations}
+library(ggcorrplot)
+sumclimaYNoC<-scaledsumclimaY%>%subset(cycle<24)%>%select(-cycle)
+corr<-round(cor(sumclimaYNoC),1)
+p.mat<-cor_pmat(sumclimaYNoC)
+ggcorrplot(corr, hc.order=TRUE, type="lower", p.mat=p.mat)
+
+ggplot(sumclimaYNoC, aes(x=meanMaxT, y=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=cumPrec, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanMaxT, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanMinT, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=Dext, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=Dsevmean, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=Dext, y=Dsevmean))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanMaxT, y=Dext))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanMaxT, y=Dsevmean))+geom_point()+stat_smooth(method="lm")+theme_bw()
+
+ggplot(sumclimaYNoC, aes(x=meanMaxT, y=burstinessRain, color=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanMinT, y=burstinessRain))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(sumclimaYNoC, aes(x=meanPrec, y=burstinessRain, color=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
+
+```
+so based on this there are some unsurprisingly strong correlations, and we should not include comPrec & meanPrec, but pick one. Also meanMaxT and day100 are highly correlated. And meanMaxT has some correlation with drought and precipitation but those are different enough that we can't pick one. So let's stick with this list: meanMaxT, meanMinT, meanPrec, burstinessRain
+
+```
+
