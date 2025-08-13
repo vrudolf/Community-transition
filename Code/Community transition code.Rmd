@@ -1072,8 +1072,7 @@ calculate_memory <- function(data, pond_val, cycle_val) {
   result_df <- data.frame(
     # Don't include pond and cycle here - they're already in the outer data frame
     markov_memory = state_repeats,
-    time_memory = time_memory,
-    mean_duration = mean(data$duration, na.rm = TRUE)
+    time_memory = time_memory
     )
   return(result_df)
 }
@@ -1129,7 +1128,6 @@ write_csv(burst_mem_g2,here("./output/frog_comm_state_burstmem_g2.csv"))
 write_csv(burst_mem_g3,here("./output/frog_comm_state_burstmem_g3.csv"))
 
 #combine with other network metrics
-
 Astate_connectance_w <- left_join(
   state_connectance_w %>% mutate(pond = as.character(pond), cycle = as.character(cycle)),
   burst_mem %>% mutate(pond = as.character(pond), cycle = as.character(cycle)),
@@ -1171,17 +1169,20 @@ ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
 modelM<-lm(time_memory~(cycle)*as.factor(pond), data=memory_results)
 library(car)
 Anova(modelM)
-#so differences in memory across ponds, but no consistent temporal effect. Higher order polinomials didnt change that/
+#so differences in memory across ponds, but no consistent temporal effect. Higher order polynomials didn't change that
 #no time effect
 ```
 let's add the burstiness and memory data to the rest of the network data.
 
 
 ##Edge diversity  
-Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can caluclate this with Pielou's eveness index.
+Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calcuclate this with Pielou's eveness index.
 ```{r}
 #load edge frequency matrix
 trans_freq<-read_csv(here("./output/frog_trans_markov.csv"))
+trans_freq_g1<-read_csv(here("./output/frog_trans_markov_g1.csv"))
+trans_freq_g2<-read_csv(here("./output/frog_trans_markov_g2.csv"))
+trans_freq_g3<-read_csv(here("./output/frog_trans_markov_g3.csv"))
 
 #calculate eveness of transitions
 calc_evenness<-function(df){
@@ -1195,8 +1196,23 @@ calc_evenness<-function(df){
       .groups="drop"
     )
 }
-Trans_evenness <- calc_evenness(trans_freq)
+Trans_evenness <- calc_evenness(trans_freq)%>%mutate(pond = as.character(pond), cycle = as.character(cycle))
 print(Trans_evenness)
+
+Trans_evenness_g1 <- calc_evenness(trans_freq_g1)%>%mutate(pond = as.character(pond), cycle = as.character(cycle))
+Trans_evenness_g2 <- calc_evenness(trans_freq_g2)%>%mutate(pond = as.character(pond), cycle = as.character(cycle))
+Trans_evenness_g3 <- calc_evenness(trans_freq_g3)%>%mutate(pond = as.character(pond), cycle = as.character(cycle))
+
+
+Tansition_metrics_w <- left_join(Astate_connectance_w, Trans_evenness)
+Tansition_metrics_w_g1 <- left_join(Astate_connectance_w_g1, Trans_evenness_g1)
+Tansition_metrics_w_g2 <- left_join(Astate_connectance_w_g2, Trans_evenness_g2)
+Tansition_metrics_w_g3 <- left_join(Astate_connectance_w_g3, Trans_evenness_g3)
+
+write_csv(Tansition_metrics_w, here("./output/frog_transition_matrix_metrics.csv"))
+write_csv(Tansition_metrics_w_g1, here("./output/frog_transition_matrix_metrics_g1.csv"))
+write_csv(Tansition_metrics_w_g2, here("./output/frog_transition_matrix_metrics_g2.csv"))
+write_csv(Tansition_metrics_w_g3, here("./output/frog_transition_matrix_metrics_g3.csv"))
 
 ggplot(Trans_evenness, aes(x=pond, y=J, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
