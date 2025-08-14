@@ -36,9 +36,10 @@ The goal of this code is to prepare data for frog phenology analyses using time-
 ```
 
 ## Prepeare the data
-Raw data comes in various forms for phenology. The data we need for the network analyses requires that we have (1) start and end date for nodes, and (2) edges with ID for nodes they connect which also have start and end date. Here we'll assume that nodes are species, and edges indicate co-occurrences of species in time. So the first step is to calculate time periods when a species is present. Then we can check for overlap among species to calculate the edges. 
-## convert to frog activity periods
-```{r}
+Raw data comes in various forms for phenology. The data we need for the network analyses requires that we have (1) start and end date for nodes, and (2) edges with ID for nodes they connect, which also have start and end date. Here we'll assume that nodes are species, and edges indicate co-occurrences of species in time. So the first step is to calculate time periods when a species is present. Then we can check for overlap among species to calculate the edges. 
+
+### convert to frog activity periods
+```{r activityperiods}
 options(readr.show_col_types = FALSE)
 #import raw phenology data which in our case is calling phenology of frogs, and remove any na (which are caused by data recorder not working in our case).
 
@@ -56,10 +57,10 @@ frogs<-frogs%>%mutate(cycle_day=case_when(
 ```
 from this output, we get the "frogs" data set, which has daily phenology observations. It includes the pond ID (1-8) which defines a community, date of observation (year-month-day), the frog species (sp), daily sum of calls, the calendar year, the day of the year (doy), the annual "frog" cycle (see above), and day in the annual cycle. We will stick to the latter two for time calculations
 
-#Dynamic nodes or presenence interval of species
+##Dynamic nodes or presenence interval of species
 The next step is to get the presence interval for each species and organize it so that each row is an interval for a given species, grouped by species, pond and cycle. In our system, we often get breaks in calling that are just 1 or 2 days, followed by more calling activity. We can either analyze the data including all those breaks, which creates a lot of transitions and "empty" communities. We can also assume that species remain present if they called before and after a break, and we can define the break. This will reduce the number of transitions and makes the network more manageable and easier to analyze and understand, but it also looses some fine grain information and temporal dynamics. We will test how this affects our results.
 
-```{r}
+```{r dynamicnodes}
 # function to find presence intervals with error checks, note that gap_tolerance indicates short breaks in calling activity. 0 = no inactivity tolerance, 1 = if the break is only 1 day between calling events we include the "gap" in the time interval. So if we have calling activity 1,2,4,5, gap_tolerance = 0 gives us two intervals 1-2 and 4-5, gap_tolerance=1 gives us one interval 1-5.
 find_presence_intervals <- function(data, gap_tolerance = 0) {
   # Check if data is empty or has no dailysum column
@@ -147,7 +148,6 @@ fill_small_gaps <- function(presence_vector, gap_tolerance) {
       }
     }
   }
-  
   return(presence)
 }
 
@@ -207,8 +207,8 @@ process_frog_presence <- function(frogs_data, gap_tolerance = 0) {
     ungroup() %>%
     arrange(pond, cycle, species, onset) %>%
     relocate(species, .after = duration) %>%
-    # Remove any rows with invalid data
-    filter(!is.na(onset) & !is.na(terminus) & duration > 0)
+    
+    filter(!is.na(onset) & !is.na(terminus) & duration > 0) # Remove any rows with invalid data
   
   # Create node attributes reference file
   node_attributes <- node_dynamic %>%
@@ -242,8 +242,7 @@ process_frog_presence <- function(frogs_data, gap_tolerance = 0) {
   ))
 }
 
-# Main execution examples with different gap tolerances
-# Assuming your data frame is called 'frogs'
+# Main execution with different gap tolerances
 
 # 1: No gap tolerance (original behavior)
 cat("=== Processing with no gap tolerance (original) ===\n")
@@ -303,7 +302,7 @@ print(head(node_dynamic))
 cat("\nFirst few rows of node_attributes:\n")
 print(head(node_attributes))
 
-# Save results with gap tolerance in filename
+# Save results with gap tolerance in file name
 write_csv(node_dynamic, here("output","frogs_node_dynamic.csv"))
 write_csv(node_dynamic_g1, here("output","frogs_node_dynamic_gap1.csv"))
 write_csv(node_dynamic_g2, here("output","frogs_node_dynamic_gap2.csv"))
@@ -315,83 +314,3 @@ write_csv(species_summary, here("output","frogs_species_summary.csv"))
 # Save comparison results
 write_csv(comparison_results, here("./output/frogs_gap_tolerance_comparison.csv"))
 ```
-
-# Function to create a detailed example showing the effect of gap tolerance
-```{r}
-demonstrate_gap_filling <- function(frogs_data, example_pond = NULL, example_species = NULL, example_cycle = NULL) {
-  # If no specific example provided, find one automatically
-  if (is.null(example_pond) || is.null(example_species) || is.null(example_cycle)) {
-    # Find a case with some variability in presence
-    example_data <- frogs_data %>%
-      group_by(pond, sp, cycle) %>%
-      summarise(
-        n_days = n(),
-        n_present = sum(dailysum > 0),
-        presence_rate = n_present / n_days,
-        .groups = "drop"
-      ) %>%
-      filter(presence_rate > 0.1 & presence_rate < 0.9) %>%
-      slice_head(n = 1)
-    
-    if (nrow(example_data) > 0) {
-      example_pond <- example_data$pond[1]
-      example_species <- example_data$sp[1]
-      example_cycle <- example_data$cycle[1]
-    } else {
-      cat("No suitable example found for demonstration\n")
-      return(NULL)
-    }
-  }
-  
-  # Extract example data
-  demo_data <- frogs_data %>%
-    filter(pond == example_pond, sp == example_species, cycle == example_cycle) %>%
-    arrange(cycle_day)
-  
-  if (nrow(demo_data) == 0) {
-    cat("No data found for specified example\n")
-    return(NULL)
-  }
-  
-  cat(paste("=== Gap Filling Demonstration ===\n"))
-  cat(paste("Pond:", example_pond, "| Species:", example_species, "| Cycle:", example_cycle, "\n\n"))
-  
-  # Show intervals for different gap tolerances
-  for (gap_tol in c(0, 1, 2, 3)) {
-    intervals <- find_presence_intervals(demo_data, gap_tolerance = gap_tol)
-    
-    cat(paste("Gap tolerance", gap_tol, "days:\n"))
-    if (nrow(intervals) > 0) {
-      for (i in 1:nrow(intervals)) {
-        cat(paste("  Interval", i, ": days", intervals[i, 1], "-", intervals[i, 2], 
-                  "(duration:", intervals[i, 2] - intervals[i, 1] + 1, "days)\n"))
-      }
-    } else {
-      cat("  No intervals found\n")
-    }
-    cat("\n")
-  }
-  
-  return(list(pond = example_pond, species = example_species, cycle = example_cycle))
-}
-
-# Run demonstration
-cat("\n")
-demo_result <- demonstrate_gap_filling(frogs)
-
-# Optional: Create a summary plot of presence intervals by pond and cycle
-presence_plot <- node_dynamic %>%
-    ggplot(aes(x = onset, xend = terminus, y = species, yend = species)) +
-    geom_segment(size = 2, alpha = 0.7) +
-    facet_grid(pond ~ cycle, scales = "free_y") +
-    labs(
-      title = "Species Presence Intervals by Pond and Cycle",
-      x = "Day of Cycle",
-      y = "Species"
-    ) +
-    theme_minimal() +
-    theme(axis.text.y = element_text(size = 8))
-  
-presence_plot
-```
-
