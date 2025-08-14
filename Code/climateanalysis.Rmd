@@ -72,10 +72,10 @@ netclim_g3 <- reduce(list(sumclima, state_connectance_w_g3), full_join) %>%
 before we get into analysis lets look at correlation between network metrics
 ```{r metric correlations}
 library(ggcorrplot)
-metrics<-state_connectance_w%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory, -S, -H)
-metrics_g1<-state_connectance_w_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory, -S, -H)
-metrics_g2<-state_connectance_w_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory, -S, -H)
-metrics_g3<-state_connectance_w_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory, -S, -H)
+metrics<-state_connectance_w%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g1<-state_connectance_w_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g2<-state_connectance_w_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g3<-state_connectance_w_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
 
 corr<-round(cor(metrics, use = "complete.obs"),1)
 p.mat<-cor_pmat(metrics)
@@ -92,8 +92,10 @@ p.mat<-cor_pmat(metrics_g3)
 ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)+
   ggtitle("Correlation matrix raw without ignoring 3 day gaps")
 
-#look at relationship of unique nodes and total edges
-ggplot(metrics, aes(x=Unique_Nodes, y=totalEdges))+geom_point()+stat_smooth(method="lm")+theme_bw()
+#look at some of the strongest correlations
+ggplot(metrics, aes(x=Unique_Nodes, y=TotalEdges))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(metrics, aes(x=Weighted_connectance, y=Connectance))+geom_point()+stat_smooth(method="lm")+theme_bw()
+ggplot(metrics, aes(x=Weighted_connectance, y=harm.centrality))+geom_point()+stat_smooth(method="lm")+theme_bw()
 
 ```
 So our whether we ignore small gaps has  no effect on correlation between metrics evnen though metrics differ between those choices. 
@@ -155,7 +157,7 @@ netPCAclim_g3<-full_join(sumclima, metricPCA_g3)%>%select(pond, cycle, everythin
 
 ```
 So two PCA are enough to explain a lot of variation in all these variables, and the first explains by far the most. It's also interesting that the correlation between variables are largely robust and don't change a lot if we ignore small 1, - 3 day gaps in calling. 
-Based on these relationship, we definitely we can drop unique nodes since it's almost perfectly correlated with totalEdges, and total Edges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need mean_t and mean_duration, which are perfectly correlated. 
+Based on these relationship, we definitely can drop unique nodes since it's almost perfectly correlated with uniqueEdges, and uniqueEdges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need  mean_t and st_t which are part of memory and burstiness. Connectance and Weighted_connectance are also highly correlated, and weighted_betweenness is also almost perfectly correlated with  harmonic centrality, so let's drop that one.
 
 
 #Network structure & climate analysis
@@ -166,8 +168,9 @@ currentdata<-netclim
 
 mS <- lmer(No_Spec~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=currentdata)
 mb <- lmer(betweenness~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mbw <- lmer(betweenness_weighted~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mc <- lmer(Connectance~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mE <- lmer(log(totalEdges)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mE <- lmer(log(TotalEdges)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mm <- lmer(modularity~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mD <- lmer((mean_Distance)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mcen <- lmer(harm.centrality~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
@@ -178,13 +181,14 @@ mJ <- lmer(J~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, d
 # Create a list of models with descriptive names
 models <- list(
   "No_Species" = mS,
-  "Betweenness" = mb,
   "Connectance" = mc,
   "Total_Edges" = mE,
   "Edge_Div"= mJ,
+  "Betweenness" = mb,
+  "WeightedBetweenness" = mbw,
+  "Harmonic_Centrality" = mcen,
   "Modularity" = mm,
   "Mean_Distance" = mD,
-  "Harmonic_Centrality" = mcen,
   "Burstiness" = mBurst,
   "Memory"= mMem
 )
@@ -540,12 +544,15 @@ ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
 ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
+ggplot(netclimR,aes(x=pond,y=Weighted_connectance,color=Bursty))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+
 
 ```
 
 #Network vs Weather PCA analysis
 Instead of using all the different weather variables, we can also use the PCA of climate. Only two were important, which makes this a little bit easier
-```{r}
+```{r metric_WeatherPCA}
 climatePCA<-read_csv(here("./output/frog_WeatherPCA.csv"))
 netclimPC<-left_join(netclim,climatePCA)
 netclimPC_g1<-left_join(netclim_g1,climatePCA)
@@ -556,8 +563,9 @@ currentPCdata<-netclimPC
 
 mSPC <- lmer(No_Spec~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mbPC <- lmer(betweenness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mbwPC <- lmer(betweenness_weighted~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mcPC <- lmer(Connectance~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mEPC <- lmer(log(totalEdges)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mEPC <- lmer(log(TotalEdges)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mmPC <- lmer(modularity~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mDPC <- lmer((mean_Distance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mcenPC <- lmer(harm.centrality~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
@@ -570,13 +578,14 @@ mJPC <- lmer(J~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 # Create a list of models with descriptive names
 models <- list(
   "No_Species" = mSPC,
-  "Betweenness" = mbPC,
-  "Connectance" = mcPC,
   "Total_Edges" = mEPC,
   "Edge_Div"=mJPC,
-  "Modularity" = mmPC,
-  "Mean_Distance" = mDPC,
+  "Connectance" = mcPC,
   "Harmonic_Centrality" = mcenPC,
+  "Betweenness" = mbPC,
+  "WeightedBetweenness" = mbwPC,
+  "Mean_Distance" = mDPC,
+  "Modularity" = mmPC,
   "Burstiness" = mBurstPC,
   "Memory"= mMemPC
 )
