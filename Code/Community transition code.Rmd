@@ -6,7 +6,7 @@ output: html_document
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE)
 ```
 #Goals
 The goal of this analysis is to turn species phenologies into a network of community state transitions. When species co-occur, they form a community state, and each species combination is a unique state, which can occur more than once. Each state has a start and ending date, and transitions into a new state. This creates a network that we will analyze to better understand how communities change
@@ -35,11 +35,11 @@ The goal of this analysis is to turn species phenologies into a network of commu
 
 ```
 
-#Get & transform data into network
+#Get & transform data into a transition network
 
 ## get the data
-We assume the data comes in the form of "Dynamic Nodes" from the "network Code", i.e. each observation (row) indicates when (e.g. the day) a species appears (onset) and disappears (terminus). This can happen multiple times for a given species. So there are at least 3 columns: 1) species ID, 2) onset, 3) terminus
-```{r}
+We assume the data comes in the form of Dynamic Nodes from the "frog data preparation" code, i.e. each observation (row) indicates when (e.g. the day) a species appears (onset) and disappears (terminus). This can happen multiple times for a given species. So there are at least 3 columns: 1) species ID, 2) onset, 3) terminus
+```{r getdata, message=FALSE}
 #get previously curated data
 #raw data
 node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
@@ -51,7 +51,7 @@ sp_num<-node_dynamic%>%
   summarize(No_Spec=n_distinct(species),.groups="drop")
 write_csv(sp_num, here("./output/frog_pond_cycle_NoSpec.csv"))  
 
-#data but ignoring gaps of 1, 2 or 3 days between calling of the same species.
+#same data but ignoring gaps of either 1, 2, or 3 days between calling events.
 node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
 node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
 node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
@@ -60,7 +60,7 @@ node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select
 
 ##organize data into community states
 We will create a new data frame, that includes column for each unique species combination, and additional columns that indicate when the state starts and ends. Note, in same cases this might include state without species, which we call "none" here.
-```{r}
+```{r community_states, message=FALSE}
 generate_state_transitions <- function(df) {
     # Validate input
   if (nrow(df) == 0) {
@@ -185,22 +185,6 @@ process_community_states <- function(node_dynamic_data,
     cat(paste("Results saved to:", output_file, "\n"))
   }
   
-  # Print summary
-  cat(paste("Total community states generated:", nrow(community_states), "\n"))
-  
-  if (add_metrics) {
-    cat("Summary statistics:\n")
-    summary_stats <- community_states %>%
-      summarise(
-        unique_states = n_distinct(state),
-        avg_duration = round(mean(duration, na.rm = TRUE), 2),
-        max_species = max(n_species, na.rm = TRUE),
-        empty_states = sum(state == "none", na.rm = TRUE),
-        .groups = "drop"
-      )
-    print(summary_stats)
-  }
-  
   return(community_states)
 }
 
@@ -228,6 +212,7 @@ process_pond_cycle_states <- function(node_dynamic_data,
   return(result)
 }
 
+#run the function for all 4 data sets
 community_states <- process_pond_cycle_states(node_dynamic, output_suffix = "")
 
 community_states_g1 <- process_pond_cycle_states(node_dynamic_g1,output_suffix = "_g1")
@@ -238,8 +223,9 @@ community_states_g3 <- process_pond_cycle_states(node_dynamic_g3, output_suffix 
 ```
 
 ##create transition links between states
-Now that we know when states are present, we can connect states. An important consideration here is how to deal with empty communities. e.g. if communities are empty between states and the period is short, do we model transitions including empty state, or just between communities? Depends on the question and code should be modified based on those. For now, we include all empty states.
-```{r state transitions, message=FALSE}
+Now that we know when states are present, we can connect states. 
+```{r state_transitions, message=FALSE}
+#get data
 community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
 community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
 community_states_g2<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
@@ -265,8 +251,6 @@ community_transitions_g1<-get_community_transitions(community_states_g1)
 community_transitions_g2<-get_community_transitions(community_states_g2)
 community_transitions_g3<-get_community_transitions(community_states_g3)
 
-
-
 #save results
 write_csv(community_transitions, here("./output/frog_transit_states.csv"))
 write_csv(community_transitions_g1, here("./output/frog_transit_states_g1.csv"))
@@ -274,9 +258,10 @@ write_csv(community_transitions_g2, here("./output/frog_transit_states_g2.csv"))
 write_csv(community_transitions_g3, here("./output/frog_transit_states_g3.csv"))
 ```
 
-#create transition networks
-Now we will use the igraph package to create graphs to visualize the networks
-```{r transition networks}
+##create transition networks
+
+Let's create network graphs and visualize some using the igraph package
+```{r networkplots}
 community_transitions<-read_csv(here("./output/frog_transit_states.csv"))
 community_transitions_g1<-read_csv(here("./output/frog_transit_states_g1.csv"))
 community_transitions_g2<-read_csv(here("./output/frog_transit_states_g2.csv"))
@@ -313,7 +298,7 @@ ggraph(test.network, layout = layout_as_star(
 
 ```
 Now let's create networks for all pond x cycle combinations
-```{r}
+```{r transition_networks}
 # Create a list of networks, one for each pond x cycle combination
 community_networks_fun <- function(data){
   # Get the grouping keys for naming
@@ -349,14 +334,13 @@ saveRDS(community_networks_g3,file=here("./output/frog_community_networks_g3.rds
 ```
 
 #Analysis
-We can look at this in a lot of different ways. 
+Now that we have state transition networks, we can analyze the structure in various ways.
 
 ##Community states
 First, we can just look at community states,either at the distributions, or average duration of a given state, or unique states etc.
-```{r}
-community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
-#now look at averages of states and frequency
+```{r state_stats}
 
+#look at averages of states and their frequency for the data sets that ignore short activity gaps or not
 com_state_Ave<-community_states%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
@@ -368,6 +352,7 @@ com_state_Ave_g1<-community_states_g1%>%
   summarize(meanDur=mean(duration),
             varDur=sd(duration),
             freqSt=n())
+
 com_state_Ave_g3<-community_states_g3%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
@@ -388,7 +373,7 @@ ggplot(com_state_Ave, aes(x=freqSt, y=meanDur))+
   facet_grid(vars(pond), vars(cycle))
 
 
-# compare it to exponential distibution
+# compare frequency to exponential distribution
 lambda_df <- community_states %>%
   group_by(pond) %>%
   summarise(
@@ -409,6 +394,7 @@ exp_curve <- lambda_df %>%
   })) %>%
   unnest(data)
 
+#plot data with exponential distribution for comparison
 ggplot() +
   geom_line(data = exp_curve, aes(x = duration, y = density),
             color = "darkgreen", size = 1.2, alpha=0.5) +
@@ -419,7 +405,9 @@ ggplot() +
 ```
 
 lets calculate if duration and frequency of occurrence of a state are correlated
-```{r}
+```{r freq_dur_state_corr}
+
+#first calculate the correlation coefficient for different data sets
 corStat_dur_freq <- com_state_Ave %>%
   group_by(pond, cycle) %>%
   summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
@@ -431,37 +419,39 @@ corStat_dur_freq_g1 <- com_state_Ave_g1 %>%
   summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
             obs=n(),
             .groups = "drop")
+
 corStat_dur_freq_g3 <- com_state_Ave_g3 %>%
   group_by(pond, cycle) %>%
   summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
             obs=n(),
             .groups = "drop")
 
+#plot the coefficients for each pond & cycle
+library(ggbeeswarm)
 ggplot(corStat_dur_freq, aes(x=pond, y=correlation, color=cycle, size=obs))+
-  geom_point()+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
-  stat_summary(fun.data=mean_se, show.legend = FALSE)+
-  ylab("Correlation between duration and frequency of states")+
+  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
+  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
   theme_bw()
 
 ggplot(corStat_dur_freq_g1, aes(x=pond, y=correlation, color=cycle, size=obs))+
-  geom_point()+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
-  stat_summary(fun.data=mean_se, show.legend = FALSE)+
-  ylab("Correlation between duration and frequency of states")+
+  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
+  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
   theme_bw()
 
 ggplot(corStat_dur_freq_g3, aes(x=pond, y=correlation, color=cycle, size=obs))+
-  geom_point()+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
-  stat_summary(fun.data=mean_se, show.legend = FALSE)+
-  ylab("Correlation between duration and frequency of states")+
+  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
+  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
   theme_bw()
 
 
 
 ```
-
 
 let's see how the number of unique community states varies
 ```{r}
@@ -492,14 +482,12 @@ ggplot(unique_states_g3, aes(x=cycle, y=No_states,color=pond, group=pond))+
 
 ```
 
+##Network Structure Analysis
+Finally, we can look at the whole structure of the transition network. We can do this as a temporal network, or transform it into a static Markov-chain network.
+The second option essentially ways the transition between nodes by the frequency at which the transitions occur. Note this option looses all temporal information except for pairwise transitions.
 
-#Network Structure Analysis
-Finally, we can look at the whole structure of the transition network. We can do this as a temporal networks, or transform it into a static Markov-chain network
-The second option essentially ways the transition between nodes by the frequency at which the transitions occur. Note this looses all temporal information.
-
-##Tansition graphs
+###Tansition graphs
 ```{r}
-
 #function to turn transition matrix into a markov transition matrix that gives frequency of transitions between states
 trans_markov<-function(data){
   data%>%
@@ -569,17 +557,20 @@ saveRDS(community_networks_weighted_g1,file=here("./output/frog_community_networ
 saveRDS(community_networks_weighted_g2,file=here("./output/frog_community_networks_weighted_g2.rds"))
 saveRDS(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
 ```
-##whole network statistics on weighted static graphs
-We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package, like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality())
+##whole network statistics on weighted transition graphs
+We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package. Statistics like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality()), etc.
 
-##Transition-Network metrics 
-This is the ratio of actual links vs. possible links. So we would assume that all states can be reached from all states. But, in our case we can have multiple edges occur multiple times. So we can either ignore those, or think about how to incorporate them 
+###Transition-Network metrics 
+
 ```{r}
 #load data
 community_networks_weighted<-readRDS(here("./output/frog_community_networks_weighted.rds"))
 community_networks_weighted_g1<-readRDS(here("./output/frog_community_networks_weighted_g1.rds"))
 community_networks_weighted_g2<-readRDS(here("./output/frog_community_networks_weighted_g2.rds"))
 community_networks_weighted_g3<-readRDS(here("./output/frog_community_networks_weighted_g3.rds"))
+
+#note that we have weighted graphs, but in igraph weights indicate a "cost". In our case, we assume connections are stronger with higher weights, so we need to use the inverse of weights for weighted metrics.
+
 
 #This function calculates various network metrics for a list of igraph objects
 analyze_network_metrics <- function(network_list, join_data = NULL) {
@@ -590,16 +581,19 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
   results <- data.frame(
     Pond_Cycle = character(network_count),
     Connectance = numeric(network_count),
+    Weighted_connectance = numeric(network_count),
     Unique_Nodes = numeric(network_count),
-    totalEdges = numeric(network_count),
+    UniqueEdges = numeric(network_count),
+    TotalEdges = numeric(network_count),
     modularity = numeric(network_count),
     mean_Distance = numeric(network_count),
     harm.centrality = numeric(network_count),
     betweenness = numeric(network_count),
+    betweenness_weighted = numeric(network_count),
     stringsAsFactors = FALSE
   )
   
-  # Loop through and fill the dataframe by index
+  # Loop through and fill the data frame by index
   for(i in seq_len(network_count)) {
     name <- names(network_list)[i]
     graph <- network_list[[name]]
@@ -618,23 +612,43 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
     }
     
     # Fill in the values for this row
-    results$Pond_Cycle[i] <- name
-    results$Unique_Nodes[i] <- gorder(graph)
-    results$totalEdges[i] <- gsize(graph)
+      results$Pond_Cycle[i] <- name
+    results$Unique_Nodes[i] <- gorder(graph) #indicates unique community states
+    results$UniqueEdges[i] <- ecount(graph) #indicates the number of edges
+    results$TotalEdges[i]<-sum(E(graph)$weight) #this sums all the edges based on their weight.
     
-    # Calculate connectance (directed graph formula)
-    results$Connectance[i] <- results$totalEdges[i] / 
+    # Calculate connectance (directed graph formula, excludes self loops not including weights)
+    results$Connectance[i] <- results$UniqueEdges[i] / 
       (results$Unique_Nodes[i] * (results$Unique_Nodes[i] - 1))
+    #same but with weights
+    results$Weighted_connectance[i] <- sum(E(graph)$weight) / (gorder(graph) * (gorder(graph) - 1) / 2)
     
     # Calculate modularity using walktrap algorithm
     results$modularity[i] <- modularity(cluster_walktrap(graph))
     
-    # Calculate mean distance
-    results$mean_Distance[i] <- mean_distance(graph)
+    # Calculate mean distance weighing inversely by frequency
+    results$mean_Distance[i] <- mean_distance(graph,weights = 1/E(graph)$weight)
     
     # Calculate centralization measures
-    results$harm.centrality[i] <- mean(harmonic_centrality(graph, mode = "all",  normalized = TRUE)) #harmonic sets disconnect =0 not Inf
+    results$harm.centrality[i] <- mean(harmonic_centrality(graph, mode = "all", weights = 1/E(graph)$weight, normalized = TRUE)) #harmonic sets disconnect =0 not Inf
     results$betweenness[i] <- centr_betw(graph)$centralization
+    
+    #same for betweenness but based on weights:
+    btw <- betweenness(graph, weights = 1/E(graph)$weight, normalized = FALSE)
+
+    # Number of nodes
+    n <- gorder(graph)
+    
+    # Betweenness centralization formula (Freeman 1977)
+    if (n > 2) {
+      max_diff_sum <- sum(max(btw) - btw)
+      theoretical_max <- (n - 1) * (n - 2)
+      central_betweenness <- max_diff_sum / theoretical_max
+    } else {
+      central_betweenness <- NA
+    }
+    results$betweenness_weighted[i]=central_betweenness
+
   }
   
   # Extract pond and cycle information from names
@@ -666,6 +680,17 @@ state_connectance_w_g2 <- analyze_network_metrics(community_networks_weighted_g2
 
 state_connectance_w_g3 <- analyze_network_metrics(community_networks_weighted_g3, sp_num)
  
+ggplot(state_connectance_w, aes(x=Connectance, y=Weighted_connectance))+
+  geom_point()+
+  theme_bw()
+
+ggplot(state_connectance_w, aes(x=betweenness, y=betweenness_weighted))+
+  geom_point()+
+  theme_bw()
+
+ggplot(state_connectance_w, aes(x=TotalEdges, y=Unique_Nodes))+
+  geom_point()+
+  theme_bw()
 
 ```
 Let's look at some patterns again
@@ -1176,7 +1201,7 @@ let's add the burstiness and memory data to the rest of the network data.
 
 
 ##Edge diversity  
-Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calcuclate this with Pielou's eveness index.
+Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calculate this with Pielou's eveness index.
 ```{r}
 #load edge frequency matrix
 trans_freq<-read_csv(here("./output/frog_trans_markov.csv"))
