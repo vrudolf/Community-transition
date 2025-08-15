@@ -177,9 +177,11 @@ mcen <- lmer(harm.centrality~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(
 mBurst <- lmer(B~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mMem <- lmer(time_memory~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 mJ <- lmer(J~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mER <- lmer(event.rate~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mDate <- lmer(meanDayOnset~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
 
 # Create a list of models with descriptive names
-models <- list(
+Basemodels <- list(
   "No_Species" = mS,
   "Connectance" = mc,
   "Total_Edges" = mE,
@@ -190,7 +192,9 @@ models <- list(
   "Modularity" = mm,
   "Mean_Distance" = mD,
   "Burstiness" = mBurst,
-  "Memory"= mMem
+  "Memory"= mMem,
+  "EventRate"= mER,
+  "MeanOnset"= mDate
 )
 
 # Function to extract ANOVA results and coefficient information
@@ -257,7 +261,7 @@ extract_anova_results <- function(model, model_name) {
 }
 
 # Apply the function to all models
-all_results <- do.call(rbind, mapply(extract_anova_results, models, names(models), SIMPLIFY = FALSE))
+all_results <- do.call(rbind, mapply(extract_anova_results, Basemodels, names(Basemodels), SIMPLIFY = FALSE))
 
 # Reset row names
 rownames(all_results) <- NULL
@@ -541,12 +545,14 @@ netclimR<-left_join(netclim,sumclimaYSub)
 ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
+ggplot(netclimR,aes(x=pond,y=Connectance,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Weighted_connectance,color=Bursty))+
+ggplot(netclimR,aes(x=pond,y=Weighted_connectance,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
+ggplot(netclimR,aes(x=pond,y=meanDayOnset,color=exthighTemp))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
 ```
 
@@ -572,7 +578,8 @@ mcenPC <- lmer(harm.centrality~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mBurstPC <- lmer(B~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mMemPC <- lmer(time_memory~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mJPC <- lmer(J~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-
+mERPC <- lmer(event.rate~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mDayOnsetPC <- lmer(meanDayOnset~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 
 
 # Create a list of models with descriptive names
@@ -587,7 +594,9 @@ models <- list(
   "Mean_Distance" = mDPC,
   "Modularity" = mmPC,
   "Burstiness" = mBurstPC,
-  "Memory"= mMemPC
+  "Memory"= mMemPC,
+  "EventRate"= mERPC,
+  "MeanOnset"= mDatePC
 )
 
 # Function to extract ANOVA results and coefficient information

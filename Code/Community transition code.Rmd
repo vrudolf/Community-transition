@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = FALSE)
 #Goals
 The goal of this analysis is to turn species phenologies into a network of community state transitions. When species co-occur, they form a community state, and each species combination is a unique state, which can occur more than once. Each state has a start and ending date, and transitions into a new state. This creates a network that we will analyze to better understand how communities change
 
-# Load packages
+### Load packages
 ```{r, warning=FALSE, message=FALSE}
  #Load packages
   #list of packages that are needed
@@ -21,7 +21,10 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "knitr",
           "here",
           "igraph",
-          "ggraph"
+          "ggraph",
+          "beeswarm",
+          "ggcorrplot",
+          "broom"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -35,9 +38,9 @@ The goal of this analysis is to turn species phenologies into a network of commu
 
 ```
 
-#Get & transform data into a transition network
+## Get & transform data into a transition network
 
-## get the data
+### get the data
 We assume the data comes in the form of Dynamic Nodes from the "frog data preparation" code, i.e. each observation (row) indicates when (e.g. the day) a species appears (onset) and disappears (terminus). This can happen multiple times for a given species. So there are at least 3 columns: 1) species ID, 2) onset, 3) terminus
 ```{r getdata, message=FALSE}
 #get previously curated data
@@ -58,7 +61,7 @@ node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select
 
 ```
 
-##organize data into community states
+### organize data into community states
 We will create a new data frame, that includes column for each unique species combination, and additional columns that indicate when the state starts and ends. Note, in same cases this might include state without species, which we call "none" here.
 ```{r community_states, message=FALSE}
 generate_state_transitions <- function(df) {
@@ -222,7 +225,7 @@ community_states_g2 <- process_pond_cycle_states(node_dynamic_g2, output_suffix 
 community_states_g3 <- process_pond_cycle_states(node_dynamic_g3, output_suffix = "_g3")
 ```
 
-##create transition links between states
+## create transition links between states
 Now that we know when states are present, we can connect states. 
 ```{r state_transitions, message=FALSE}
 #get data
@@ -230,6 +233,12 @@ community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
 community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
 community_states_g2<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
 community_states_g3<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
+
+
+na_summary <- community_states %>%
+  group_by(pond, cycle) %>%
+  summarise(any_na = any(is.na(across(everything()))), .groups = "drop") %>%
+  filter(any_na == TRUE)
 
 # Create transitions data frame function
 get_community_transitions <- function(data) {
@@ -258,7 +267,7 @@ write_csv(community_transitions_g2, here("./output/frog_transit_states_g2.csv"))
 write_csv(community_transitions_g3, here("./output/frog_transit_states_g3.csv"))
 ```
 
-##create transition networks
+## create transition networks
 
 Let's create network graphs and visualize some using the igraph package
 ```{r networkplots}
@@ -297,8 +306,9 @@ ggraph(test.network, layout = layout_as_star(
     ) 
 
 ```
+
 Now let's create networks for all pond x cycle combinations
-```{r transition_networks}
+```{r transition_networks, warning=FALSE}
 # Create a list of networks, one for each pond x cycle combination
 community_networks_fun <- function(data){
   # Get the grouping keys for naming
@@ -333,12 +343,12 @@ saveRDS(community_networks_g3,file=here("./output/frog_community_networks_g3.rds
 
 ```
 
-#Analysis
+# Analysis
 Now that we have state transition networks, we can analyze the structure in various ways.
 
-##Community states
+## Community states
 First, we can just look at community states,either at the distributions, or average duration of a given state, or unique states etc.
-```{r state_stats}
+```{r state_stats, warning=FALSE}
 
 #look at averages of states and their frequency for the data sets that ignore short activity gaps or not
 com_state_Ave<-community_states%>%
@@ -405,7 +415,7 @@ ggplot() +
 ```
 
 lets calculate if duration and frequency of occurrence of a state are correlated
-```{r freq_dur_state_corr}
+```{r freq_dur_state_corr, warning=FALSE}
 
 #first calculate the correlation coefficient for different data sets
 corStat_dur_freq <- com_state_Ave %>%
@@ -449,8 +459,6 @@ ggplot(corStat_dur_freq_g3, aes(x=pond, y=correlation, color=cycle, size=obs))+
   labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
   theme_bw()
 
-
-
 ```
 
 let's see how the number of unique community states varies
@@ -479,6 +487,166 @@ ggplot(unique_states_g3, aes(x=cycle, y=No_states,color=pond, group=pond))+
   geom_smooth(se=F)+
   theme_bw()
 
+```
+## timing of transitions
+There is likely to be a seasonal timing of transition between states, and we can look at how this varies across ponds and seasonal cycles. Since transitions in this type of data all have a single day duration, we can simple look at the distribution of start of nodes, which indicate when transitions happen. We are really interested in the day of the cycle when they happen. Note that we look at their temporal distribution using burstiness and memory below. For now we are really focused on the timing within a cycle.
+
+#NOTES: figure out when data is missing, otherwise I can also look at rate of change or something as crude metric
+```{r}
+#we need the community_states data for this which has all the info on onset and terminus
+#let's start by calculating mean and median values for duration and onset
+sum_start<-community_states%>%group_by(pond, cycle)%>%
+  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
+  mutate(pond = as.factor(pond))
+
+sum_start_g1<-community_states_g1%>%group_by(pond, cycle)%>%
+  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
+  mutate(pond = as.factor(pond))
+sum_start_g2<-community_states_g2%>%group_by(pond, cycle)%>%
+  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
+  mutate(pond = as.factor(pond))
+sum_start_g3<-community_states_g3%>%group_by(pond, cycle)%>%
+  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
+  mutate(pond = as.factor(pond))
+
+ggplot(sum_start,aes(x=pond, y=meanDayOnset, color=cycle))+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+  stat_summary(fun.data=mean_se,size=1)+
+  theme_bw()
+
+ggplot(sum_start,aes(x=pond, y=medDayOnset, color=cycle))+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+  stat_summary(fun.data=mean_se,size=1)+
+  theme_bw()
+
+meanDy<-lm(meanDayOnset~pond+as.factor(cycle), data=sum_start)
+Anova(meanDy)
+
+medDy<-lm(medDayOnset~pond+as.factor(cycle), data=sum_start)
+Anova(medDy)
+
+
+
+#we can also look at cumulative events over time in a year to see how that differs across ponds and cycles
+daily_cumulative_onsets <- community_states %>%
+  count(pond, cycle, day = onset) %>%  # count onsets per day per group
+  group_by(pond, cycle) %>%
+  complete(day = full_seq(day, 1), fill = list(n = 0)) %>%  # fill missing days
+  arrange(day) %>%
+  mutate(cum_onsets = cumsum(n)) %>%
+  mutate(scaled_events=cum_onsets/(max(cum_onsets)))%>%
+  ungroup()
+
+daily_cumulative_onsets_g1 <- community_states_g1 %>%
+  count(pond, cycle, day = onset) %>%  # count onsets per day per group
+  group_by(pond, cycle) %>%
+  complete(day = full_seq(day, 1), fill = list(n = 0)) %>%  # fill missing days
+  arrange(day) %>%
+  mutate(cum_onsets = cumsum(n)) %>%
+  mutate(scaled_events=cum_onsets/(max(cum_onsets)))%>%
+  ungroup()
+daily_cumulative_onsets_g2 <- community_states_g2 %>%
+  count(pond, cycle, day = onset) %>%  # count onsets per day per group
+  group_by(pond, cycle) %>%
+  complete(day = full_seq(day, 1), fill = list(n = 0)) %>%  # fill missing days
+  arrange(day) %>%
+  mutate(cum_onsets = cumsum(n)) %>%
+  mutate(scaled_events=cum_onsets/(max(cum_onsets)))%>%
+  ungroup()
+daily_cumulative_onsets_g3 <- community_states_g3 %>%
+  count(pond, cycle, day = onset) %>%  # count onsets per day per group
+  group_by(pond, cycle) %>%
+  complete(day = full_seq(day, 1), fill = list(n = 0)) %>%  # fill missing days
+  arrange(day) %>%
+  mutate(cum_onsets = cumsum(n)) %>%
+  mutate(scaled_events=cum_onsets/(max(cum_onsets)))%>%
+  ungroup()
+
+#plot cummulative events over time
+ggplot(subset(daily_cumulative_onsets, pond==4) , aes(x=day,y=scaled_events, group=cycle, color=cycle))+
+  geom_line(size=2)+
+  stat_smooth(method="lm",se=F, color="gray")+
+  facet_grid(pond~cycle)+
+  theme_bw()+
+   scale_color_viridis_c(option = "plasma", end = 0.9)
+
+#let's fit simple linear model to this which fits impressively well (see plot above)
+eventvstime_regression <- daily_cumulative_onsets %>%
+  group_by(pond, cycle) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(scaled_events ~ day, data = .x)),
+    tidy_model = map(model, tidy)
+  ) %>%
+  unnest(tidy_model) %>%
+  filter(term == "day") %>%  # get only the slope term
+  select(pond, cycle, estimate, std.error, p.value) %>%
+  rename(
+    event.rate = estimate,
+    se = std.error,
+    p_value = p.value
+  )
+
+eventvstime_regression_g1 <- daily_cumulative_onsets_g1 %>%
+  group_by(pond, cycle) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(scaled_events ~ day, data = .x)),
+    tidy_model = map(model, tidy)
+  ) %>%
+  unnest(tidy_model) %>%
+  filter(term == "day") %>%  # get only the slope term
+  select(pond, cycle, estimate, std.error, p.value) %>%
+  rename(
+    event.rate = estimate,
+    se = std.error,
+    p_value = p.value
+  )
+eventvstime_regression_g2 <- daily_cumulative_onsets_g2 %>%
+  group_by(pond, cycle) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(scaled_events ~ day, data = .x)),
+    tidy_model = map(model, tidy)
+  ) %>%
+  unnest(tidy_model) %>%
+  filter(term == "day") %>%  # get only the slope term
+  select(pond, cycle, estimate, std.error, p.value) %>%
+  rename(
+    event.rate = estimate,
+    se = std.error,
+    p_value = p.value
+  )
+eventvstime_regression_g3 <- daily_cumulative_onsets_g3 %>%
+  group_by(pond, cycle) %>%
+  nest() %>%
+  mutate(
+    model = map(data, ~ lm(scaled_events ~ day, data = .x)),
+    tidy_model = map(model, tidy)
+  ) %>%
+  unnest(tidy_model) %>%
+  filter(term == "day") %>%  # get only the slope term
+  select(pond, cycle, estimate, std.error, p.value) %>%
+  rename(
+    event.rate = estimate,
+    se = std.error,
+    p_value = p.value
+  )
+
+
+
+ggplot(eventvstime_regression, aes(x=pond, y=event.rate, color=cycle))+
+  geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
+
+eventvs.time<-eventvstime_regression%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
+eventvs.time_g1<-eventvstime_regression_g1%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
+eventvs.time_g2<-eventvstime_regression_g2%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
+eventvs.time_g3<-eventvstime_regression_g3%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
+
+timing_sum<-left_join(sum_start,eventvs.time)
+timing_sum_g1<-left_join(sum_start_g1,eventvs.time_g1)
+timing_sum_g2<-left_join(sum_start_g2,eventvs.time_g1)
+timing_sum_g3<-left_join(sum_start_g3,eventvs.time_g1)
 
 ```
 
@@ -557,15 +725,13 @@ saveRDS(community_networks_weighted_g1,file=here("./output/frog_community_networ
 saveRDS(community_networks_weighted_g2,file=here("./output/frog_community_networks_weighted_g2.rds"))
 saveRDS(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
 ```
-##whole network statistics on weighted transition graphs
+
+# whole network statistics on weighted transition graphs
 We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package. Statistics like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality()), etc.
 
-###Transition-Network metrics 
-
-
-##Edge diversity  
+## Edge diversity  
 Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calculate this with Pielou's eveness index.
-```{r}
+```{r edge_diversity}
 #load edge frequency matrix
 trans_freq<-read_csv(here("./output/frog_trans_markov.csv"))
 trans_freq_g1<-read_csv(here("./output/frog_trans_markov_g1.csv"))
@@ -594,13 +760,13 @@ Trans_evenness_g3 <- calc_evenness(trans_freq_g3)%>%mutate(pond = as.factor(pond
 
 ggplot(Trans_evenness, aes(x=pond, y=J, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
-  geom_point()+
-  theme_bw()
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+   theme_bw()+
+  labs(x="Pond cummunity", y="Edge evenness index (J)")
 
 ```
 
-
-```{r}
+```{r transition_metrics}
 #load data
 community_networks_weighted<-readRDS(here("./output/frog_community_networks_weighted.rds"))
 community_networks_weighted_g1<-readRDS(here("./output/frog_community_networks_weighted_g1.rds"))
@@ -710,22 +876,19 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
 
 sp_num<-read_csv(here("./output/frog_pond_cycle_NoSpec.csv"))  %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
 
-state_connectance_w <- analyze_network_metrics(community_networks_weighted, sp_num)
+state_connectance_w <- analyze_network_metrics(community_networks_weighted, sp_num)%>%mutate(pond=as.factor(pond))
 
-state_connectance_w_g1 <- analyze_network_metrics(community_networks_weighted_g1, sp_num)
+state_connectance_w_g1 <- analyze_network_metrics(community_networks_weighted_g1, sp_num)%>%mutate(pond=as.factor(pond))
 
-state_connectance_w_g2 <- analyze_network_metrics(community_networks_weighted_g2, sp_num)
+state_connectance_w_g2 <- analyze_network_metrics(community_networks_weighted_g2, sp_num)%>%mutate(pond=as.factor(pond))
 
-state_connectance_w_g3 <- analyze_network_metrics(community_networks_weighted_g3, sp_num)
+state_connectance_w_g3 <- analyze_network_metrics(community_networks_weighted_g3, sp_num)%>%mutate(pond=as.factor(pond))
 
 ```
 
-
-
-
-##Burstiness
+## Burstiness
 We will calculate temporal distribution of events, in this case when a new state appears. This gives us a good idea of when and how changes are clumped in time or not. Values=1 indicate perfect (periodic) spacing, = 0 random, >0 clumping. Note, we need to decide if we include empty states in this calculation
-```{r}
+```{r burstiness}
 #get data, we'll just use basic community state data for simplicity but could do this with network data too
 community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
 community_statesNonone<-read_csv(here("./output/frog_CommunityStates.csv"))%>%subset(state!="none") #this is a subset of the data where we exclude periods without any species being active (so no "empty" states)
@@ -790,13 +953,11 @@ ggcorrplot(cor.mat,type="lower",
            ggtheme=ggplot2::theme_classic,colors = c("#6D9EC1", "white", "#E46726"),
            lab=T,
            p.mat=p.mat)
-
-
 ```
 
-##Memory
+## Memory
 Now we calculate memory, which is complementary to burstiness and examines how correlated events are. >0 indicates that short interevent follow short events, =0 means it's random, <0 means long follow short and vice versa. Basically a 1-lag autocorrelation coefficient
-```{r}
+```{r memory}
 # Load necessary libraries
 library(dplyr)
 library(tidyr)
@@ -923,8 +1084,6 @@ memory_results_g1 <- memory_analysis(community_states_g1) %>%mutate(pond=as.fact
 memory_results_g2 <- memory_analysis(community_states_g2) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
 memory_results_g3 <- memory_analysis(community_states_g3) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
 
-
-
 ggplot(memory_results, aes(x=pond, y=time_memory, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
   geom_point()+
@@ -948,13 +1107,13 @@ Anova(modelM)
 ```
 
 Lets combine both with all the other network metrics into one data file
-```{r combine_metrics}
+```{r combine_metrics, warning=FALSE}
 
 # Assume list of data frames
-df_list <- list(state_connectance_w,Trans_evenness,burstiness_results,memory_results)
-df_list_g1 <- list(state_connectance_w_g1,Trans_evenness_g1,burstiness_results_g1,memory_results_g1)
-df_list_g2 <- list(state_connectance_w_g2,Trans_evenness_g2,burstiness_results_g2,memory_results_g2)
-df_list_g3 <- list(state_connectance_w_g3,Trans_evenness_g3,burstiness_results_g3,memory_results_g3)
+df_list <- list(state_connectance_w,Trans_evenness,burstiness_results,memory_results, timing_sum)
+df_list_g1 <- list(state_connectance_w_g1,Trans_evenness_g1,burstiness_results_g1,memory_results_g1, timing_sum_g1)
+df_list_g2 <- list(state_connectance_w_g2,Trans_evenness_g2,burstiness_results_g2,memory_results_g2,timing_sum_g2)
+df_list_g3 <- list(state_connectance_w_g3,Trans_evenness_g3,burstiness_results_g3,memory_results_g3, timing_sum_g3)
 
 # Join all by "id" using left_join
 Transition_metrics <- reduce(df_list, left_join, by = c("pond", "cycle")) %>%
@@ -971,5 +1130,6 @@ write_csv(Transition_metrics, here("./output/frog_transition_matrix_metrics.csv"
 write_csv(Transition_metrics_g1, here("./output/frog_transition_matrix_metrics_g1.csv"))
 write_csv(Transition_metrics_g2, here("./output/frog_transition_matrix_metrics_g2.csv"))
 write_csv(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g3.csv"))
+
 
 ```
