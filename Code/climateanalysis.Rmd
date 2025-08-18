@@ -166,19 +166,19 @@ Ok so let's analyze the network metrics and how they are linked to climate varia
 #GLMM models
 currentdata<-netclim
 
-mS <- lmer(No_Spec~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=currentdata)
-mb <- lmer(betweenness~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mbw <- lmer(betweenness_weighted~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mc <- lmer(Connectance~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mE <- lmer(log(TotalEdges)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mm <- lmer(modularity~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mD <- lmer((mean_Distance)~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mcen <- lmer(harm.centrality~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mBurst <- lmer(B~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mMem <- lmer(time_memory~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mJ <- lmer(J~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mER <- lmer(event.rate~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
-mDate <- lmer(meanDayOnset~meanMinT*meanMaxT*meanPrec*burstinessRain+No_Spec+(1|pond)+cycle, data=currentdata)
+mS <- lmer(No_Spec~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mb <- lmer(betweenness~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mbw <- lmer(betweenness_weighted~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mc <- lmer(Connectance~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mE <- lmer(log(TotalEdges)~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mm <- lmer(modularity~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mD <- lmer((mean_Distance)~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mcen <- lmer(harm.centrality~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mBurst <- lmer(B~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mMem <- lmer(time_memory~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mJ <- lmer(J~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mER <- lmer(event.rate~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mDate <- lmer(meanDayOnset~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 
 # Create a list of models with descriptive names
 Basemodels <- list(
@@ -541,6 +541,18 @@ sumclimaY$Bursty<-ifelse(sumclimaY$burstinessRain> 0.09, "Yes", "No") #this is c
 sumclimaYSub<-sumclimaY%>%select(cycle, exthighTemp,extLongHot, extDry,Wet,LowPrec,Bursty)
 netclimR<-left_join(netclim,sumclimaYSub)
 
+extbetw<-lmer(betweenness~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extcon<-lmer(Connectance~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extmod<-lmer(modularity~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extB<-lmer(B~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extmem<-lmer(time_memory~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extspec<-lmer(No_Spec~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+Anova(extbetw)
+Anova(extcon)
+Anova(extmod)
+Anova(extB)
+Anova(extmem)
+Anova(extspec)
 
 ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
@@ -548,10 +560,16 @@ ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
 ggplot(netclimR,aes(x=pond,y=Connectance,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Weighted_connectance,color=exthighTemp))+
+ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=meanDayOnset,color=exthighTemp))+
+ggplot(netclimR,aes(x=pond,y=Connectance,color=Wet))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+
+ggplot(netclimR,aes(x=pond,y=No_Spec,color=exthighTemp))+
+  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+
+ggplot(netclimR,aes(x=pond,y=No_Spec,color=Bursty))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
 ```
@@ -596,7 +614,7 @@ models <- list(
   "Burstiness" = mBurstPC,
   "Memory"= mMemPC,
   "EventRate"= mERPC,
-  "MeanOnset"= mDatePC
+  "MeanOnset"= mDayOnsetPC
 )
 
 # Function to extract ANOVA results and coefficient information

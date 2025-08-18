@@ -412,6 +412,7 @@ ggplot() +
                  binwidth = 1, fill = "black") +
   facet_grid(~pond, scales = "free_y") +
   theme_bw()
+
 ```
 
 lets calculate if duration and frequency of occurrence of a state are correlated
