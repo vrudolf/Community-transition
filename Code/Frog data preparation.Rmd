@@ -43,7 +43,7 @@ Raw data comes in various forms for phenology. The data we need for the network 
 options(readr.show_col_types = FALSE)
 #import raw phenology data which in our case is calling phenology of frogs, and remove any na (which are caused by data recorder not working in our case).
 
-frogs<-read_csv(here("./data/dailycalls_corrected_2022.csv"))%>%na.omit
+frogs<-read_csv(here("./data/dailycalls_corrected_2001-2024.csv"))%>%na.omit
 
 #Phenology data doesn't always line up with the calendar year, like in our frog data. Instead, we used extensive analysis to define cutoff point for a an annual cycle which was day 340 in our case. So we use this cutoff to separates cycles which requires some data manipulation. Skip this step if your system aligns with calendar year
 frogs<-frogs%>%mutate(cycle=case_when(

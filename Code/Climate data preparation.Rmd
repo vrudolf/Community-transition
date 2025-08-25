@@ -149,7 +149,7 @@ drought<-drought%>%mutate(cycle_day=case_when(
   .default=doy+27
 ))
 
-#combine the severity indexes into one drought severity metric. We do this by giveing more weight to more sever drought indexes
+#combine the severity indexes into one drought severity metric. We do this by giving more weight to more sever drought indexes
 drought<-drought%>%mutate(Dseverity=D0+D1*2+D2*3+D3*4+D4*4)
 sumdrought<-drought%>%group_by(cycle)%>%
   summarize(Dsevmean=mean(Dseverity),Dext=max(Dseverity))
@@ -157,9 +157,9 @@ ggplot(sumdrought, aes(x=cycle, y=Dext))+geom_line()+geom_point()+theme_bw()
 
 
 #add it to climate data
-sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<24)
+sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<25)
 
-#noemalize the climate data since they are all on different scales.
+#normalize the climate data since they are all on different scales.
 scaledsumclimaY <- data.frame(
   cycle=sumclimaYBD[1],                      # keep the first column untouched
   scale(sumclimaYBD[, -1])              # scale all other columns

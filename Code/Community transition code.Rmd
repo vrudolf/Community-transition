@@ -45,7 +45,7 @@ We assume the data comes in the form of Dynamic Nodes from the "frog data prepar
 ```{r getdata, message=FALSE}
 #get previously curated data
 #raw data
-node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
 
 #get number of species per pond x cycle
 
@@ -55,9 +55,9 @@ sp_num<-node_dynamic%>%
 write_csv(sp_num, here("./output/frog_pond_cycle_NoSpec.csv"))  
 
 #same data but ignoring gaps of either 1, 2, or 3 days between calling events.
-node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
-node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
-node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<23)
+node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
+node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
+node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
 
 ```
 
