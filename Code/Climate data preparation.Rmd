@@ -47,7 +47,7 @@ climate$DATE<-as.Date(climate$DATE,format="%m/%d/%Y")
 climate<-climate%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
 
 #now this is usually on annual basis, but we need to align it with the "frog cycle" we used for the community analysis
-climate<-climate%>%mutate(cycle=case_when(
+climate<-climate%>%subset(year<2025)%>%mutate(cycle=case_when(
   doy>340~year-1999,
   .default=year-2000
 ))
@@ -64,43 +64,53 @@ sumclimaY<-climate%>%group_by(cycle)%>%
             cumPrec=sum(PRCP, na.rm=TRUE))
 ```
 
-Look at some of this weather data plotted
+# Extreme climate year
+We will identify extreme climate events based on the deviation from the average and plot it for reference. We'll focus on extreme hot and dry for now. 
+
 ```{r}
-ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanMaxT))+
+sumclimaY<-subset(sumclimaY, cycle<25)%>%
+  mutate(
+    mMaxTY=mean(meanMaxT),
+    mMinTY=mean(meanMinT),
+    mPrecY=mean(meanPrec),
+    mday100Y=mean(day100),
+    eMaxTY=mean(meanMaxT)+sd(meanMaxT),
+    eMinTY=mean(meanMinT)-sd(meanMinT),
+    ePrecY=mean(meanPrec)-sd(meanPrec),
+    eday100Y=mean(day100)+sd(day100))%>%
+  mutate(exthighTemp=ifelse(meanMaxT>eMaxTY, "Yes", "No"),
+                  extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
+                  extlongHeat=ifelse(day100>eday100Y, "Yes", "No"),
+                  extDry=ifelse(meanPrec<ePrecY, "Yes", "No"))
+
+
+ggplot(subset(sumclimaY),aes(x=cycle,y=meanMaxT))+
   geom_line()+
-  geom_point()+
-  theme_bw()+
-  geom_hline(aes(yintercept=25.975),linetype="dashed")
+  geom_point(aes(color=exthighTemp))+
+  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mMaxTY),linetype="dashed")+
+  theme_bw()
+  
 
-ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=day100))+
+ggplot(subset(sumclimaY),aes(x=cycle,y=meanPrec))+
   geom_line()+
-  geom_point()+
-  theme_bw()+
-  geom_hline(aes(yintercept=37.6),linetype="dashed")
+  geom_point(aes(color=extDry))+
+  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mPrecY),linetype="dashed")+
+  theme_bw()
 
-ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanMinT))+
+ggplot(subset(sumclimaY),aes(x=cycle,y=day100))+
   geom_line()+
-  geom_point()+
-  theme_bw()+
-  geom_hline(aes(yintercept=13.678),linetype="dashed")
-
-ggplot(subset(sumclimaY,cycle<25),aes(x=cycle,y=meanPrec))+
-  geom_line()+
-  geom_point()+
-  theme_bw()+
-  geom_hline(aes(yintercept=3.545489),linetype="dashed")
-
-
-sumclimaM<-climate%>%group_by(cycle, month)%>%
-  summarize(MmeanMaxT=mean(TMAX,na.rm = TRUE), 
-            MmeanMinT=mean(TMIN,na.rm = TRUE), 
-            Mday100=sum(TMAX > 35,na.rm = TRUE),
-            MmeanPrec=mean(PRCP,na.rm=TRUE),
-            McumPrec=sum(PRCP, na.rm=TRUE))
-
+  geom_point(aes(color=extlongHeat))+
+  geom_ribbon(aes(ymin = mday100Y-sd(day100), ymax = eday100Y), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mday100Y),linetype="dashed")+
+  theme_bw()
+  
+write.csv(sumclimaY, here("output","sumclimaY.csv"), row.names = FALSE)
 ```
 
-Lets claculate how bursty rain fall is.
+#Burstiness of rainfall
+Lets calculate how bursty rain fall is.
 ```{r burstiness}
 # Define a function to calculate burstiness
 calculate_burstiness <- function(dates) {
@@ -251,5 +261,5 @@ ggplot(sumclimaYNoC, aes(x=meanPrec, y=burstinessRain, color=meanMinT))+geom_poi
 ```
 so based on this there are some unsurprisingly strong correlations, and we should not include comPrec & meanPrec, but pick one. Also meanMaxT and day100 are highly correlated. And meanMaxT has some correlation with drought and precipitation but those are different enough that we can't pick one. So let's stick with this list: meanMaxT, meanMinT, meanPrec, burstinessRain
 
-```
+
 

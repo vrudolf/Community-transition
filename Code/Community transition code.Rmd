@@ -350,7 +350,7 @@ Now that we have state transition networks, we can analyze the structure in vari
 First, we can just look at community states,either at the distributions, or average duration of a given state, or unique states etc.
 ```{r state_stats, warning=FALSE}
 
-#look at averages of states and their frequency for the data sets that ignore short activity gaps or not
+#look at average and standard deviation of duration of individual states, how often a state occurs, and we do this for the raw data sets or those that  ignore short activity gaps (g1-g3)
 com_state_Ave<-community_states%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
@@ -370,7 +370,7 @@ com_state_Ave_g3<-community_states_g3%>%
             freqSt=n())
 
 #and plot them
-ggplot(subset(com_state_Ave, meanDur>4), aes(y=meanDur, x=cycle, group=pond,color=factor(pond)))+
+ggplot(subset(com_state_Ave_g3), aes(y=meanDur, x=cycle, group=pond,color=factor(pond)))+
   stat_summary(fund.data=mean_se)+theme_bw()+stat_smooth(se=F)
 
 ggplot(com_state_Ave, aes(x=freqSt))+
@@ -739,11 +739,14 @@ trans_freq_g1<-read_csv(here("./output/frog_trans_markov_g1.csv"))
 trans_freq_g2<-read_csv(here("./output/frog_trans_markov_g2.csv"))
 trans_freq_g3<-read_csv(here("./output/frog_trans_markov_g3.csv"))
 
-#calculate eveness of transitions
+library(moments)
+
+#calculate skenwess and eveness of transitions
 calc_evenness<-function(df){
   df%>%
     group_by(pond, cycle)%>%
     summarize(
+      skewness=skewness(weight),
       total_weight=sum(weight),
       S=n_distinct(paste(starting_state,end_state,sep="->")), #unique state transitions
       H=-sum((weight/total_weight)*log(weight/total_weight), na.rm=TRUE), #shannon's diversity index
@@ -751,7 +754,7 @@ calc_evenness<-function(df){
       .groups="drop"
     )
 }
-Trans_evenness <- calc_evenness(trans_freq)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
+Trans_evenness <- calc_evenness(trans_freq)%>%mutate(pond = as.factor(pond))%>%select(-H,-total_weight)
 print(Trans_evenness)
 
 Trans_evenness_g1 <- calc_evenness(trans_freq_g1)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
@@ -764,6 +767,19 @@ ggplot(Trans_evenness, aes(x=pond, y=J, color=cycle))+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
    theme_bw()+
   labs(x="Pond cummunity", y="Edge evenness index (J)")
+
+ggplot(Trans_evenness, aes(x=pond, y=skewness, color=cycle))+
+  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+   theme_bw()+
+  labs(x="Pond cummunity", y="skewness")
+
+
+skewtest<-lm(skewness~pond*cycle, data=Trans_evenness)
+Anova(skewtest)
+
+Jtest<-lm(J~pond*cycle, data=Trans_evenness)
+Anova(Jtest)
 
 ```
 

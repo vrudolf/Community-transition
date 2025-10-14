@@ -47,23 +47,23 @@ We will examine how climate variables are linked to different aspects of communi
 Let's load the community matrix and climate data (see "Community transition code.Rdm" and "Climate data preparation.Rdm")
 ```{r get data, message=F}
 #get summary metrics of the transition matrix
-state_connectance_w<-read_csv(here("./output/frog_transition_matrix_metrics.csv")) #raw data transition matrix 
+state_connectance_metrics<-read_csv(here("./output/frog_transition_matrix_metrics.csv"))#raw data transition matrix 
 #we have 3 additional version of the transition matrix that ignore a gap of 1, 2, or 3 day in the calling of a species and treat it as a continuous period. 
-state_connectance_w_g1<-read_csv(here("output","frog_transition_matrix_metrics_g1.csv")) 
-state_connectance_w_g2<-read_csv(here("output","frog_transition_matrix_metrics_g2.csv"))
-state_connectance_w_g3<-read_csv(here("output","frog_transition_matrix_metrics_g3.csv"))
+state_connectance_metrics_g1<-read_csv(here("output","frog_transition_matrix_metrics_g1.csv")) 
+state_connectance_metrics_g2<-read_csv(here("output","frog_transition_matrix_metrics_g2.csv"))
+state_connectance_metrics_g3<-read_csv(here("output","frog_transition_matrix_metrics_g3.csv"))
 
 #get annual climate data summary metrics 
 sumclima<-read_csv(here("output","frog_climate_data_annual_scaled.csv"))%>%subset(cycle<25)
 
 #combine climate and network statistics
-netclim <- reduce(list(sumclima, state_connectance_w), full_join) %>%
+netclim <- reduce(list(sumclima, state_connectance_metrics), full_join) %>%
   select(pond, cycle, Pond_Cycle, everything())
-netclim_g1 <- reduce(list(sumclima, state_connectance_w_g1), full_join) %>%
+netclim_g1 <- reduce(list(sumclima, state_connectance_metrics_g1), full_join) %>%
   select(pond, cycle, Pond_Cycle, everything())
-netclim_g2 <- reduce(list(sumclima, state_connectance_w_g2), full_join) %>%
+netclim_g2 <- reduce(list(sumclima, state_connectance_metrics_g2), full_join) %>%
   select(pond, cycle, Pond_Cycle, everything())
-netclim_g3 <- reduce(list(sumclima, state_connectance_w_g3), full_join) %>%
+netclim_g3 <- reduce(list(sumclima, state_connectance_metrics_g3), full_join) %>%
   select(pond, cycle, Pond_Cycle, everything())
 
 ```
@@ -72,10 +72,10 @@ netclim_g3 <- reduce(list(sumclima, state_connectance_w_g3), full_join) %>%
 before we get into analysis lets look at correlation between network metrics
 ```{r metric correlations}
 library(ggcorrplot)
-metrics<-state_connectance_w%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g1<-state_connectance_w_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g2<-state_connectance_w_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g3<-state_connectance_w_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics<-state_connectance_metrics%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g1<-state_connectance_metrics_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g2<-state_connectance_metrics_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
+metrics_g3<-state_connectance_metrics_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
 
 corr<-round(cor(metrics, use = "complete.obs"),1)
 p.mat<-cor_pmat(metrics)
@@ -98,17 +98,19 @@ ggplot(metrics, aes(x=Weighted_connectance, y=Connectance))+geom_point()+stat_sm
 ggplot(metrics, aes(x=Weighted_connectance, y=harm.centrality))+geom_point()+stat_smooth(method="lm")+theme_bw()
 
 ```
-So our whether we ignore small gaps has  no effect on correlation between metrics evnen though metrics differ between those choices. 
+So our whether we ignore small gaps has  no effect on correlation between metrics evenen though metrics differ between those choices. 
+
+We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. Unique nodes and unique edges are also almost perfectly correlated, but we'll keep it for now since that's interesting.
 
 Let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship
 ```{r networkPCA, message=F}
 library("factoextra")
 library("FactoMineR")
-metricpca<- prcomp(metrics, scale = TRUE)
+metricpca<- metrics%>%select(-meanDayOnset)%>%prcomp(scale = TRUE)
 print(metricpca)
 
-metricpca_g1<- prcomp(metrics_g1, scale = TRUE)
-metricpca_g3<- prcomp(metrics_g3, scale = TRUE)
+metricpca_g1<-metrics_g1 %>%select(-meanDayOnset)%>% prcomp(scale = TRUE)
+metricpca_g3<- metrics_g3%>% select(-meanDayOnset)%>%prcomp( scale = TRUE)
 
 
 #plot PC %explanation which is almost identical for all three data sets.
@@ -177,6 +179,7 @@ mcen <- lmer(harm.centrality~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+
 mBurst <- lmer(B~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mMem <- lmer(time_memory~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mJ <- lmer(J~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mSk <- lmer(skewness~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mER <- lmer(event.rate~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mDate <- lmer(meanDayOnset~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 
@@ -186,6 +189,7 @@ Basemodels <- list(
   "Connectance" = mc,
   "Total_Edges" = mE,
   "Edge_Div"= mJ,
+  "Edge_skew"=mSk,
   "Betweenness" = mb,
   "WeightedBetweenness" = mbw,
   "Harmonic_Centrality" = mcen,
@@ -312,61 +316,6 @@ sig_table <- all_results %>%
   pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
 
 print(sig_table)
-```
-Now let's do it with the PC instead 
-```{r, PCmetric climate analysis}
-pca1<-lmer(PC1~meanMinT+
-             meanMaxT+
-             meanPrec+
-             burstinessRain+
-             meanMinT:meanMaxT+
-             meanMinT:meanPrec+
-             meanMinT:burstinessRain+
-             meanMaxT:burstinessRain+
-             meanPrec:burstinessRain+
-             meanMinT:meanMaxT:burstinessRain+
-             #meanMinT:meanMaxT:burstinessRain:meanPrec+
-             (1|pond)+cycle, 
-           data=netPCAclim)
-pca1_g1<-lmer(PC1~meanMinT+
-             meanMaxT+
-             meanPrec+
-             burstinessRain+
-             meanMinT:meanMaxT+
-             meanMinT:meanPrec+
-             meanMinT:burstinessRain+
-             meanMaxT:burstinessRain+
-             meanPrec:burstinessRain+
-             meanMinT:meanMaxT:burstinessRain+
-             #meanMinT:meanMaxT:burstinessRain:meanPrec+
-             +(1|pond)+cycle,
-             data=netPCAclim_g1)
-pca1_g3<-lmer(PC1~meanMinT+
-             meanMaxT+
-             meanPrec+
-             burstinessRain+
-             meanMinT:meanMaxT+
-             meanMinT:meanPrec+
-             meanMinT:burstinessRain+
-             meanMaxT:burstinessRain+
-             meanPrec:burstinessRain+
-             meanMinT:meanMaxT:burstinessRain+
-             #meanMinT:meanMaxT:burstinessRain:meanPrec+
-             (1|pond)+cycle,
-             data=netPCAclim_g3)
-
-Anova(pca1)
-Anova(pca1_g1)
-Anova(pca1_g3)
-
-
-pca2<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=netPCAclim)
-pca2_g1<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond), data=netPCAclim_g1)
-pca2_g3<-lmer(PC2~meanMinT*meanMaxT*meanPrec*burstinessRain+(1|pond)+cycle, data=netPCAclim_g3)
-Anova(pca2)
-Anova(pca2_g1)
-Anova(pca2_g3)
-
 ```
 Let's make some plots
 ```{r}
@@ -515,64 +464,52 @@ Look at extreme years
 ISSUE< cycle 24 shows up as NA?????
 ```{r}
 #get raw climate data
-sumclimaY<-read.csv(here("./output/frog_climate_data_annualsum.csv"))
+sumclima<-read.csv(here("./output/frog_climate_data_annualsum.csv"))
 
 #define extreme years see "climate data preparation" code for cutoffs
-#hot years
-sumclimaY$exthighTemp<-ifelse(sumclimaY$meanMaxT> 26.79, "Yes", "No") #this is cycle 5, 11, 12, 22, 23,24
-
-#years with long hot periods
-sumclimaY$extLongHot<-ifelse(sumclimaY$day100> 64, "Yes", "No") #this is cycle 5, 11, 22, 23,24
-
-#cold years
-sumclimaY$extlowTemp<-ifelse(sumclimaY$meanMinT< 13.3, "Yes", "No") #this is cycle 2, 8, 10
-
-#years with long droughts
-sumclimaY$extDry<-ifelse(sumclimaY$Dext> 750, "Yes", "No") #this is cycle 11,12,13,15,23
+#years with extreme drought severity indext
+sumclima$extDrought<-ifelse(sumclima$Dsevmean> 200, "Yes", "No") #this is cycle 11,12,13,15,23
 
 #years with high annual precipitation
-sumclimaY$Wet<-ifelse(sumclimaY$meanPrec> 4, "Yes", "No") #this is cycle 2,4,15,18, 24
-
-#years with low annual precipitation
-sumclimaY$LowPrec<-ifelse(sumclimaY$meanPrec< 2.5, "Yes", "No") #this is cycle 5,10,11
+sumclima$Wet<-ifelse(sumclima$meanPrec> 4, "Yes", "No") #this is cycle 2,4,15,18, 24
 
 #years with bursty rainfall
-sumclimaY$Bursty<-ifelse(sumclimaY$burstinessRain> 0.09, "Yes", "No") #this is cycle 1 15 22 23
+sumclima$Bursty<-ifelse(sumclima$burstinessRain> 0.09, "Yes", "No") #this is cycle 1 15 22 23
 
 #join data
-sumclimaYSub<-sumclimaY%>%select(cycle, exthighTemp,extLongHot, extDry,Wet,LowPrec,Bursty)
-netclimR<-left_join(netclim,sumclimaYSub)
+sumclimaSub<-sumclima%>%select(cycle, exthighTemp,extlongHeat, extDry, extDrought,Wet,Bursty)
+netclimR<-left_join(netclim,sumclimaSub)
 
-extbetw<-lmer(betweenness~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
-extcon<-lmer(Connectance~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
-extmod<-lmer(modularity~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
-extB<-lmer(B~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
-extmem<-lmer(time_memory~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
-extspec<-lmer(No_Spec~exthighTemp+Wet+Bursty+(1|pond), data=netclimR)
+extbetw<-lmer(betweenness~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extcon<-lmer(Connectance~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extmod<-lmer(modularity~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extB<-lmer(B~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extmem<-lmer(time_memory~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extspec<-lmer(No_Spec~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extskew<-lmer(skewness~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+extEdges<-lmer(TotalEdges~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+
 Anova(extbetw)
 Anova(extcon)
 Anova(extmod)
 Anova(extB)
 Anova(extmem)
 Anova(extspec)
+Anova(extskew)
+Anova(extEdges)
 
 ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Connectance,color=exthighTemp))+
+ggplot(netclimR,aes(x=pond,y=betweenness,color=extlongHeat))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Connectance,color=Bursty))+
+ggplot(netclimR,aes(x=pond,y=betweenness,color=extDry))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=Connectance,color=Wet))+
+ggplot(netclimR,aes(x=pond,y=betweenness,color=extDrought))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=No_Spec,color=exthighTemp))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
-
-ggplot(netclimR,aes(x=pond,y=No_Spec,color=Bursty))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
 ```
 
@@ -598,6 +535,7 @@ mcenPC <- lmer(harm.centrality~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mBurstPC <- lmer(B~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mMemPC <- lmer(time_memory~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mJPC <- lmer(J~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mSkew <- lmer(skewness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mERPC <- lmer(event.rate~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mDayOnsetPC <- lmer(meanDayOnset~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 
@@ -607,6 +545,7 @@ models <- list(
   "No_Species" = mSPC,
   "Total_Edges" = mEPC,
   "Edge_Div"=mJPC,
+  "Edge_skew"=mSkew,
   "Connectance" = mcPC,
   "Harmonic_Centrality" = mcenPC,
   "Betweenness" = mbPC,

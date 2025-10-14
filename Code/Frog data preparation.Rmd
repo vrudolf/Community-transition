@@ -68,8 +68,8 @@ find_presence_intervals <- function(data, gap_tolerance = 0) {
     return(data.frame())
   }
   
-  # Find where dailysum > 0 (presence)
-  presence <- data$dailysum > 0
+  # Find where dailysum > 0 (presence), assume presence ends for any NA (when recorders were not working)
+  presence <- ifelse(is.na(data$dailysum), FALSE, data$dailysum > 0)
   
   # Handle case where there's no presence at all
   if (!any(presence)) {
