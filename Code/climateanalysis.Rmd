@@ -30,7 +30,9 @@ We will examine how climate variables are linked to different aspects of communi
           "car",
           "lme4",
           "flextable",
-          "stringr"
+          "stringr",
+          "ggpubr",
+          "broom.mixed"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -47,11 +49,11 @@ We will examine how climate variables are linked to different aspects of communi
 Let's load the community matrix and climate data (see "Community transition code.Rdm" and "Climate data preparation.Rdm")
 ```{r get data, message=F}
 #get summary metrics of the transition matrix
-state_connectance_metrics<-read_csv(here("./output/frog_transition_matrix_metrics.csv"))#raw data transition matrix 
+state_connectance_metrics<-read_rds(here("./output/frog_transition_matrix_metrics.rds"))#raw data transition matrix 
 #we have 3 additional version of the transition matrix that ignore a gap of 1, 2, or 3 day in the calling of a species and treat it as a continuous period. 
-state_connectance_metrics_g1<-read_csv(here("output","frog_transition_matrix_metrics_g1.csv")) 
-state_connectance_metrics_g2<-read_csv(here("output","frog_transition_matrix_metrics_g2.csv"))
-state_connectance_metrics_g3<-read_csv(here("output","frog_transition_matrix_metrics_g3.csv"))
+state_connectance_metrics_g1<-read_rds(here("output","frog_transition_matrix_metrics_g1.rds")) 
+state_connectance_metrics_g2<-read_rds(here("output","frog_transition_matrix_metrics_g2.rds"))
+state_connectance_metrics_g3<-read_rds(here("output","frog_transition_matrix_metrics_g3.rds"))
 
 #get annual climate data summary metrics 
 sumclima<-read_csv(here("output","frog_climate_data_annual_scaled.csv"))%>%subset(cycle<25)
@@ -98,7 +100,7 @@ ggplot(metrics, aes(x=Weighted_connectance, y=Connectance))+geom_point()+stat_sm
 ggplot(metrics, aes(x=Weighted_connectance, y=harm.centrality))+geom_point()+stat_smooth(method="lm")+theme_bw()
 
 ```
-So our whether we ignore small gaps has  no effect on correlation between metrics evenen though metrics differ between those choices. 
+So whether we ignore small gaps has  no effect on correlation between metrics evene though metrics differ between those choices. 
 
 We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. Unique nodes and unique edges are also almost perfectly correlated, but we'll keep it for now since that's interesting.
 
@@ -179,9 +181,12 @@ mcen <- lmer(harm.centrality~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+
 mBurst <- lmer(B~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mMem <- lmer(time_memory~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mJ <- lmer(J~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mSk <- lmer(skewness~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mSkE <- lmer(skewEdge~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mER <- lmer(event.rate~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 mDate <- lmer(meanDayOnset~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mDur<-lmer(meanDurAv~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mSkewDur<-lmer(skewDur~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
+mFreq<-lmer(freqStateAv~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
 
 # Create a list of models with descriptive names
 Basemodels <- list(
@@ -198,7 +203,10 @@ Basemodels <- list(
   "Burstiness" = mBurst,
   "Memory"= mMem,
   "EventRate"= mER,
-  "MeanOnset"= mDate
+  "MeanOnset"= mDate,
+  "Node_Duration"=mDur,
+  "Skew_Dur"=mSkewDur,
+  "Node_freq"=mFreq
 )
 
 # Function to extract ANOVA results and coefficient information
@@ -459,58 +467,102 @@ print(summary_stats)
 
 ```
 
-Look at extreme years
+# Extreme climate
+Let's look at differences in community structure metrics between extreme years and normal years.
 
-ISSUE< cycle 24 shows up as NA?????
 ```{r}
 #get raw climate data
-sumclima<-read.csv(here("./output/frog_climate_data_annualsum.csv"))
-
-#define extreme years see "climate data preparation" code for cutoffs
-#years with extreme drought severity indext
-sumclima$extDrought<-ifelse(sumclima$Dsevmean> 200, "Yes", "No") #this is cycle 11,12,13,15,23
-
-#years with high annual precipitation
-sumclima$Wet<-ifelse(sumclima$meanPrec> 4, "Yes", "No") #this is cycle 2,4,15,18, 24
-
-#years with bursty rainfall
-sumclima$Bursty<-ifelse(sumclima$burstinessRain> 0.09, "Yes", "No") #this is cycle 1 15 22 23
+sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat), extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot))%>%select(-burstinessRain)
 
 #join data
-sumclimaSub<-sumclima%>%select(cycle, exthighTemp,extlongHeat, extDry, extDrought,Wet,Bursty)
-netclimR<-left_join(netclim,sumclimaSub)
+netclimR<-left_join(netclim,sumclima.raw, by=c("cycle"))
 
-extbetw<-lmer(betweenness~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extcon<-lmer(Connectance~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extmod<-lmer(modularity~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extB<-lmer(B~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extmem<-lmer(time_memory~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extspec<-lmer(No_Spec~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extskew<-lmer(skewness~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
-extEdges<-lmer(TotalEdges~exthighTemp+extDry+Bursty+(1|pond), data=netclimR)
+#get variables to analyze
+variable.for.extanalysis<-c("No_Spec", "Unique_Nodes","TotalEdges","Connectance","betweenness", "modularity", "mean_Distance", "skewEdge", "B", "meanDurAv", "freqStateAv", "skewDur", "event.rate", "time_memory")
 
-Anova(extbetw)
-Anova(extcon)
-Anova(extmod)
-Anova(extB)
-Anova(extmem)
-Anova(extspec)
-Anova(extskew)
-Anova(extEdges)
-
-ggplot(netclimR,aes(x=pond,y=betweenness,color=exthighTemp))+
+netclimR[variable.for.extanalysis] <- lapply(netclimR[variable.for.extanalysis], scale)
+#analyze the data
+library(broom.mixed)
+res <- map_dfr(variable.for.extanalysis, function(response) {
+  # Fit the mixed model for this response
+  model <- lmer(as.formula(paste(response,"~ extHot+extDryT + (1 | pond)")), data = netclimR)
+  
+  # Tidy model output: fixed effects only, with confidence intervals
+  broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+    mutate(response = response)%>%filter(!str_detect(term,"(Intercept)"))
+  }
+  )
+# visualize some plots with raw data
+ggplot(netclimR,aes(x=pond,y=Connectance,color=extHot))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=betweenness,color=extlongHeat))+
+ggplot(netclimR,aes(x=pond,y=B,color=extDryT))+
   geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
 
-ggplot(netclimR,aes(x=pond,y=betweenness,color=extDry))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+```
 
-ggplot(netclimR,aes(x=pond,y=betweenness,color=extDrought))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
+plot effect sizes of extreme drought and temperature
+```{r}
+# Create alternating background - need to expand for all terms
+background_data <- res %>%
+  filter(term != "(Intercept)") %>%
+  distinct(response, term) %>%
+  mutate(row_num = as.numeric(factor(response, 
+                                     levels = variable.for.extanalysis))) %>%
+  mutate(fill_color = ifelse(row_num %% 2 == 0, "grey95", "white"))
 
 
+#make labels
+variable_labels <- c(
+  "No_Spec" = "Species richness",
+  "Unique_Nodes" = "Unique nodes",
+  "TotalEdges" = "Total edges",
+  "Connectance" = "Connectance",
+  "betweenness" = "Betweenness",
+  "modularity" = "Modularity",
+  "mean_Distance" = "Mean distance",
+  "skewEdge" = "Edge skewness",
+  "B" = "Burstiness",
+  "meanDurAv" = "Mean duration",
+  "freqStateAv" = "Frequency state",
+  "skewDur" = "Duration skewness",
+  "event.rate" = "Event rate",
+  "time_memory" = "Memory"
+)
+# Create a coefficient plot faceted by predictor
+coef.plot <- res %>%
+  mutate(significant = p.value < 0.05) %>%
+  ggplot(aes(x = estimate, y = response, color=term)) +
+  geom_tile(data = background_data,
+            aes(y = response, x = 0, height = 1, width = Inf, fill = fill_color), 
+            color = NA) +
+  scale_fill_identity() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), 
+                 height = 0.0, linewidth = 1) +
+  geom_point(size = 3) +
+  facet_wrap(~ term, ncol = 2, 
+             labeller = labeller(term = c(
+               "extHotYes" = "Extreme Hot",
+               "extDryTYes" = "Extreme Dry"
+               #"burstinessRain" = "Rain Burstiness"
+               ))) +
+  scale_y_discrete(
+    limits = rev(variable.for.extanalysis),
+    labels = rev(variable_labels)) +
+  labs(x = "Standardized coefficients and 95% CI", y = "") + 
+  scale_color_manual(
+  values = c("extHotYes" = "#E69F00", 
+             "extDryTYes" = "#56B4E9"), guide="none")+
+  theme_pubr(base_size = 16) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size = 18, face = "bold"),
+        panel.spacing = unit(1, "lines"), 
+        axis.text.x = element_text(size = 14), 
+        axis.text.y = element_text(size = 16), 
+        axis.title = element_text(size = 18))
+
+coef.plot
 ```
 
 #Network vs Weather PCA analysis
@@ -523,29 +575,35 @@ netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
 currentPCdata<-netclimPC
+#note, I could test for random pond effect using ranova function of lmerTest package
+#i can also use the performance package to quantify effect size as explained variance for random effect.
+#should I standardize all metrics first?
 
 mSPC <- lmer(No_Spec~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mbPC <- lmer(betweenness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mbwPC <- lmer(betweenness_weighted~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mcPC <- lmer(Connectance~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mEPC <- lmer(log(TotalEdges)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mmPC <- lmer(modularity~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mDPC <- lmer((mean_Distance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mcenPC <- lmer(harm.centrality~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mcPC <- lmer(log(Connectance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to meet normal distribution assumption
+mEPC <- lmer(TotalEdges~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mmPC <- lmer(modularity~PC1+PC2+(1|pond)+cycle, data=currentPCdata) 
+mDPC <- lmer(log(mean_Distance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to better fit normal distribution
+mcenPC <- lmer(log(harm.centrality)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to better fit normal distribution
 mBurstPC <- lmer(B~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mMemPC <- lmer(time_memory~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mMemPC <- lmer(log(1+time_memory)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mJPC <- lmer(J~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mSkew <- lmer(skewness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mSkewPC <- lmer(skewEdge~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mERPC <- lmer(event.rate~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 mDayOnsetPC <- lmer(meanDayOnset~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mDurPC <- lmer(meanDurAv~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mSkewDurPC <- lmer(skewDur~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
+mFreqPC <- lmer(freqStateAv~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 
 
 # Create a list of models with descriptive names
-models <- list(
+modelsPCA <- list(
   "No_Species" = mSPC,
   "Total_Edges" = mEPC,
   "Edge_Div"=mJPC,
-  "Edge_skew"=mSkew,
+  "Edge_skew"=mSkewPC,
   "Connectance" = mcPC,
   "Harmonic_Centrality" = mcenPC,
   "Betweenness" = mbPC,
@@ -555,7 +613,10 @@ models <- list(
   "Burstiness" = mBurstPC,
   "Memory"= mMemPC,
   "EventRate"= mERPC,
-  "MeanOnset"= mDayOnsetPC
+  "MeanOnset"= mDayOnsetPC, 
+  "Node_Duration"=mDurPC,
+  "Skew_Dur"=mSkewDurPC,
+  "Node_freq"=mFreqPC
 )
 
 # Function to extract ANOVA results and coefficient information
@@ -622,19 +683,19 @@ extract_anova_results <- function(model, model_name) {
 }
 
 # Apply the function to all models
-all_results <- do.call(rbind, mapply(extract_anova_results, models, names(models), SIMPLIFY = FALSE))
+all_resultsPCA <- do.call(rbind, mapply(extract_anova_results, modelsPCA, names(modelsPCA), SIMPLIFY = FALSE))
 
 # Reset row names
-rownames(all_results) <- NULL
+rownames(all_resultsPCA) <- NULL
 
 # Create wide format table of p-values across models
-pivot_table <- all_results %>%
+pivot_tablePCA <- all_resultsPCA %>%
   select(Model, Effect, P_value) %>%
   pivot_wider(names_from = Model, values_from = P_value) %>%
   arrange(Effect)
 
 # Format as a flextable for Word
-pivot_table %>%
+pivot_tablePCA %>%
   flextable() %>%
   set_caption("Table: P-values Across All Models") %>%
   theme_booktabs() %>%
@@ -643,12 +704,12 @@ pivot_table %>%
   autofit()
 
 # Create effect size comparison table
-effect_size_table <- all_results %>%
+effect_size_tablePCA <- all_resultsPCA %>%
   select(Model, Effect, Effect_Size) %>%
   pivot_wider(names_from = Model, values_from = Effect_Size) %>%
   arrange(Effect)
 #Print formatted flextable for Word output
-effect_size_table%>%
+effect_size_tablePCA%>%
   flextable()%>%
   set_caption("Table: Effect Size across all models")%>%
   theme_booktabs()%>%
@@ -657,12 +718,12 @@ effect_size_table%>%
   autofit
 
 # Create standard error comparison table
-std_error_table <- all_results %>%
+std_error_tablePCA <- all_resultsPCA %>%
   select(Model, Effect, Std_Error) %>%
   pivot_wider(names_from = Model, values_from = Std_Error) %>%
   arrange(Effect)
 #Print formatted flextable for Word output
-std_error_table%>%
+std_error_tablePCA%>%
   flextable()%>%
   set_caption("Table: Standard errors across all models")%>%
   theme_booktabs()%>%
@@ -672,7 +733,7 @@ std_error_table%>%
 
 
 # Create significance pattern table
-sig_table <- all_results %>%
+sig_tablePCA <- all_resultsPCA %>%
   select(Model, Effect, Significance) %>%
   mutate(interaction_level = str_count(Effect, ":")) %>%
   arrange(interaction_level, Effect) %>%
@@ -680,7 +741,7 @@ sig_table <- all_results %>%
   pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
 
 # Print formatted flextable for Word output
-sig_table %>%
+sig_tablePCA %>%
   flextable() %>%
   set_caption("Table: Significance Patterns") %>%
   theme_booktabs() %>%        # Adds horizontal lines under header and at bottom

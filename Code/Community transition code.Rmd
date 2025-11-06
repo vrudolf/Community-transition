@@ -24,7 +24,8 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "ggraph",
           "beeswarm",
           "ggcorrplot",
-          "broom"
+          "broom",
+          "moments"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -45,19 +46,19 @@ We assume the data comes in the form of Dynamic Nodes from the "frog data prepar
 ```{r getdata, message=FALSE}
 #get previously curated data
 #raw data
-node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
+node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
 
 #get number of species per pond x cycle
 
 sp_num<-node_dynamic%>%
   group_by(pond, cycle)%>%
   summarize(No_Spec=n_distinct(species),.groups="drop")
-write_csv(sp_num, here("./output/frog_pond_cycle_NoSpec.csv"))  
+write_rds(sp_num, here("./output/frog_pond_cycle_NoSpec.rds"))  
 
 #same data but ignoring gaps of either 1, 2, or 3 days between calling events.
-node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
-node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
-node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)
+node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
+node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
+node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
 
 ```
 
@@ -184,7 +185,7 @@ process_community_states <- function(node_dynamic_data,
   
   # Save to file if specified
   if (!is.null(output_file)) {
-    write_csv(community_states, output_file)
+    write_rds(community_states, output_file)
     cat(paste("Results saved to:", output_file, "\n"))
   }
   
@@ -198,7 +199,7 @@ process_pond_cycle_states <- function(node_dynamic_data,
   
   # Create output filename if suffix provided
   output_file <- if (!is.null(output_suffix)) {
-    file.path(output_dir, paste0("frog_CommunityStates", output_suffix, ".csv"))
+    file.path(output_dir, paste0("frog_CommunityStates", output_suffix, ".rds"))
   } else {
     NULL
   }
@@ -229,10 +230,10 @@ community_states_g3 <- process_pond_cycle_states(node_dynamic_g3, output_suffix 
 Now that we know when states are present, we can connect states. 
 ```{r state_transitions, message=FALSE}
 #get data
-community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
-community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
-community_states_g2<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
-community_states_g3<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
+community_states<-readRDS(here("./output/frog_CommunityStates.rds"))
+community_states_g1<-readRDS(here("./output/frog_CommunityStates_g1.rds"))
+community_states_g2<-readRDS(here("./output/frog_CommunityStates_g3.rds"))
+community_states_g3<-readRDS(here("./output/frog_CommunityStates_g3.rds"))
 
 
 na_summary <- community_states %>%
@@ -261,20 +262,20 @@ community_transitions_g2<-get_community_transitions(community_states_g2)
 community_transitions_g3<-get_community_transitions(community_states_g3)
 
 #save results
-write_csv(community_transitions, here("./output/frog_transit_states.csv"))
-write_csv(community_transitions_g1, here("./output/frog_transit_states_g1.csv"))
-write_csv(community_transitions_g2, here("./output/frog_transit_states_g2.csv"))
-write_csv(community_transitions_g3, here("./output/frog_transit_states_g3.csv"))
+saveRDS(community_transitions, here("./output/frog_transit_states.rds"))
+saveRDS(community_transitions_g1, here("./output/frog_transit_states_g1.rds"))
+saveRDS(community_transitions_g2, here("./output/frog_transit_states_g2.rds"))
+saveRDS(community_transitions_g3, here("./output/frog_transit_states_g3.rds"))
 ```
 
 ## create transition networks
 
 Let's create network graphs and visualize some using the igraph package
 ```{r networkplots}
-community_transitions<-read_csv(here("./output/frog_transit_states.csv"))
-community_transitions_g1<-read_csv(here("./output/frog_transit_states_g1.csv"))
-community_transitions_g2<-read_csv(here("./output/frog_transit_states_g2.csv"))
-community_transitions_g3<-read_csv(here("./output/frog_transit_states_g3.csv"))
+community_transitions<-readRDS(here("./output/frog_transit_states.rds"))
+community_transitions_g1<-readRDS(here("./output/frog_transit_states_g1.rds"))
+community_transitions_g2<-readRDS(here("./output/frog_transit_states_g2.rds"))
+community_transitions_g3<-readRDS(here("./output/frog_transit_states_g3.rds"))
 
 
 #let's run a test for a simple pond, note it will assume first two columns are the node pairs for the edges
@@ -347,7 +348,7 @@ saveRDS(community_networks_g3,file=here("./output/frog_community_networks_g3.rds
 Now that we have state transition networks, we can analyze the structure in various ways.
 
 ## Community states
-First, we can just look at community states,either at the distributions, or average duration of a given state, or unique states etc.
+First, we look at community states,unique states, the average duration of a given state, and their frequency.
 ```{r state_stats, warning=FALSE}
 
 #look at average and standard deviation of duration of individual states, how often a state occurs, and we do this for the raw data sets or those that  ignore short activity gaps (g1-g3)
@@ -355,37 +356,76 @@ com_state_Ave<-community_states%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
             varDur=sd(duration),
-            freqSt=n())
+            freqState=n()
+            )
 
 com_state_Ave_g1<-community_states_g1%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
             varDur=sd(duration),
-            freqSt=n())
+            freqState=n()
+            )
 
+com_state_Ave_g2<-community_states_g3%>%
+  group_by(pond, cycle,state)%>%
+  summarize(meanDur=mean(duration),
+            varDur=sd(duration),
+           freqState=n()
+           )
 com_state_Ave_g3<-community_states_g3%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
             varDur=sd(duration),
-            freqSt=n())
+           freqState=n()
+           )
+
+#now let's get network annual averages instead of nodes 
+com_state_Network<-com_state_Ave%>%
+  group_by(pond, cycle)%>%
+  summarize(meanDurAv=mean(meanDur),
+            freqStateAv=mean(freqState),
+            skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
+            )
+
+com_state_Network_g1<-com_state_Ave_g1%>%
+  group_by(pond, cycle)%>%
+  summarize(meanDurAv=mean(meanDur),
+            freqStateAv=mean(freqState),
+            skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
+            )
+com_state_Network_g2<-com_state_Ave_g2%>%
+  group_by(pond, cycle)%>%
+  summarize(meanDurAv=mean(meanDur),
+            freqStateAv=mean(freqState),
+            skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
+            )
+
+com_state_Network_g3<-com_state_Ave_g3%>%
+  group_by(pond, cycle)%>%
+  summarize(meanDurAv=mean(meanDur),
+            freqStateAv=mean(freqState),
+            skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
+            )
 
 #and plot them
-ggplot(subset(com_state_Ave_g3), aes(y=meanDur, x=cycle, group=pond,color=factor(pond)))+
-  stat_summary(fund.data=mean_se)+theme_bw()+stat_smooth(se=F)
+ggplot(subset(com_state_Network), aes(y=meanDurAv, x=cycle, color=factor(pond)))+
+  stat_summary(fund.data=mean_se)+
+  theme_bw()+
+  stat_smooth(se=F)
 
-ggplot(com_state_Ave, aes(x=freqSt))+
-  geom_histogram()+theme_bw()+
-  facet_grid(vars(pond), vars(cycle))
+ggplot(com_state_Network, aes(x=cycle, y=freqStateAv, color=factor(pond)))+
+  geom_point()+
+  stat_smooth(se=F)+
+  theme_bw()
 
-ggplot(com_state_Ave, aes(x=freqSt, y=meanDur))+
-  geom_point()+theme_bw()+
-  stat_smooth(method=lm, se=FALSE)+
-  facet_grid(vars(pond), vars(cycle))
-
+ggplot(com_state_Network, aes(x=cycle, y=skewDur, color=factor(pond)))+
+  geom_point()+
+  stat_smooth(se=F)+
+  theme_bw()
 
 # compare frequency to exponential distribution
 lambda_df <- community_states %>%
-  group_by(pond) %>%
+  group_by(pond, cycle) %>%
   summarise(
     lambda = 1 / mean(duration),
     .groups = "drop"
@@ -421,24 +461,33 @@ lets calculate if duration and frequency of occurrence of a state are correlated
 #first calculate the correlation coefficient for different data sets
 corStat_dur_freq <- com_state_Ave %>%
   group_by(pond, cycle) %>%
-  summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
+  summarise(correlation = cor(meanDur, freqState, method = "kendall",),
             obs=n(),
+            skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE)),
             .groups = "drop")
 
 corStat_dur_freq_g1 <- com_state_Ave_g1 %>%
   group_by(pond, cycle) %>%
-  summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
+  summarise(correlation = cor(meanDur, freqState, method = "kendall",),
             obs=n(),
             .groups = "drop")
 
 corStat_dur_freq_g3 <- com_state_Ave_g3 %>%
   group_by(pond, cycle) %>%
-  summarise(correlation = cor(meanDur, freqSt, method = "kendall",),
+  summarise(correlation = cor(meanDur, freqState, method = "kendall",),
             obs=n(),
             .groups = "drop")
 
 #plot the coefficients for each pond & cycle
 library(ggbeeswarm)
+ggplot(corStat_dur_freq, aes(x=pond, y=skewDur, color=cycle, size=obs))+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+  scale_size(range = c(1, 5)) +
+  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
+  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
+  theme_bw()
+
+
 ggplot(corStat_dur_freq, aes(x=pond, y=correlation, color=cycle, size=obs))+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
@@ -492,40 +541,27 @@ ggplot(unique_states_g3, aes(x=cycle, y=No_states,color=pond, group=pond))+
 ## timing of transitions
 There is likely to be a seasonal timing of transition between states, and we can look at how this varies across ponds and seasonal cycles. Since transitions in this type of data all have a single day duration, we can simple look at the distribution of start of nodes, which indicate when transitions happen. We are really interested in the day of the cycle when they happen. Note that we look at their temporal distribution using burstiness and memory below. For now we are really focused on the timing within a cycle.
 
-#NOTES: figure out when data is missing, otherwise I can also look at rate of change or something as crude metric
 ```{r}
 #we need the community_states data for this which has all the info on onset and terminus
 #let's start by calculating mean and median values for duration and onset
 sum_start<-community_states%>%group_by(pond, cycle)%>%
-  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
-  mutate(pond = as.factor(pond))
+  summarize(meanDayOnset=mean(onset))
 
 sum_start_g1<-community_states_g1%>%group_by(pond, cycle)%>%
-  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
-  mutate(pond = as.factor(pond))
+  summarize(meanDayOnset=mean(onset))
 sum_start_g2<-community_states_g2%>%group_by(pond, cycle)%>%
-  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
-  mutate(pond = as.factor(pond))
+  summarize(meanDayOnset=mean(onset))
 sum_start_g3<-community_states_g3%>%group_by(pond, cycle)%>%
-  summarize(meanDayOnset=mean(onset), medDayOnset=median(onset))%>%
-  mutate(pond = as.factor(pond))
+  summarize(meanDayOnset=mean(onset))
 
 ggplot(sum_start,aes(x=pond, y=meanDayOnset, color=cycle))+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   stat_summary(fun.data=mean_se,size=1)+
   theme_bw()
 
-ggplot(sum_start,aes(x=pond, y=medDayOnset, color=cycle))+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
-  stat_summary(fun.data=mean_se,size=1)+
-  theme_bw()
 
 meanDy<-lm(meanDayOnset~pond+as.factor(cycle), data=sum_start)
 Anova(meanDy)
-
-medDy<-lm(medDayOnset~pond+as.factor(cycle), data=sum_start)
-Anova(medDy)
-
 
 
 #we can also look at cumulative events over time in a year to see how that differs across ponds and cycles
@@ -639,10 +675,10 @@ eventvstime_regression_g3 <- daily_cumulative_onsets_g3 %>%
 ggplot(eventvstime_regression, aes(x=pond, y=event.rate, color=cycle))+
   geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
 
-eventvs.time<-eventvstime_regression%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
-eventvs.time_g1<-eventvstime_regression_g1%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
-eventvs.time_g2<-eventvstime_regression_g2%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
-eventvs.time_g3<-eventvstime_regression_g3%>%select(pond, cycle,event.rate)%>%mutate(pond=as.factor(pond))
+eventvs.time<-eventvstime_regression%>%select(pond, cycle,event.rate)
+eventvs.time_g1<-eventvstime_regression_g1%>%select(pond, cycle,event.rate)
+eventvs.time_g2<-eventvstime_regression_g2%>%select(pond, cycle,event.rate)
+eventvs.time_g3<-eventvstime_regression_g3%>%select(pond, cycle,event.rate)
 
 timing_sum<-left_join(sum_start,eventvs.time)
 timing_sum_g1<-left_join(sum_start_g1,eventvs.time_g1)
@@ -672,10 +708,10 @@ trans_markov_matrix_g3<-trans_markov(community_transitions_g3)
 
 
 # save results
-write_csv(trans_markov_matrix, here("./output/frog_trans_markov.csv"))
-write_csv(trans_markov_matrix_g1, here("./output/frog_trans_markov_g1.csv"))
-write_csv(trans_markov_matrix_g2, here("./output/frog_trans_markov_g2.csv"))
-write_csv(trans_markov_matrix_g3, here("./output/frog_trans_markov_g3.csv"))
+write_rds(trans_markov_matrix, here("./output/frog_trans_markov.rds"))
+write_rds(trans_markov_matrix_g1, here("./output/frog_trans_markov_g1.rds"))
+write_rds(trans_markov_matrix_g2, here("./output/frog_trans_markov_g2.rds"))
+write_rds(trans_markov_matrix_g3, here("./output/frog_trans_markov_g3.rds"))
 
 #calculated weighed networks using iGraph package
 weighted_networks <- function(data){
@@ -721,10 +757,10 @@ plot(community_networks_weighted[["pond_5_cycle_11"]], layout=layout.circle, edg
 
 
 #save data
-saveRDS(community_networks_weighted,file=here("./output/frog_community_networks_weighted.rds"))
-saveRDS(community_networks_weighted_g1,file=here("./output/frog_community_networks_weighted_g1.rds"))
-saveRDS(community_networks_weighted_g2,file=here("./output/frog_community_networks_weighted_g2.rds"))
-saveRDS(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
+write_rds(community_networks_weighted,file=here("./output/frog_community_networks_weighted.rds"))
+write_rds(community_networks_weighted_g1,file=here("./output/frog_community_networks_weighted_g1.rds"))
+write_rds(community_networks_weighted_g2,file=here("./output/frog_community_networks_weighted_g2.rds"))
+write_rds(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
 ```
 
 # whole network statistics on weighted transition graphs
@@ -734,19 +770,17 @@ We can now calculate a number of statistics on basic "static" weighted transitio
 Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calculate this with Pielou's eveness index.
 ```{r edge_diversity}
 #load edge frequency matrix
-trans_freq<-read_csv(here("./output/frog_trans_markov.csv"))
-trans_freq_g1<-read_csv(here("./output/frog_trans_markov_g1.csv"))
-trans_freq_g2<-read_csv(here("./output/frog_trans_markov_g2.csv"))
-trans_freq_g3<-read_csv(here("./output/frog_trans_markov_g3.csv"))
-
-library(moments)
+trans_freq<-read_rds(here("./output/frog_trans_markov.rds"))
+trans_freq_g1<-read_rds(here("./output/frog_trans_markov_g1.rds"))
+trans_freq_g2<-read_rds(here("./output/frog_trans_markov_g2.rds"))
+trans_freq_g3<-read_rds(here("./output/frog_trans_markov_g3.rds"))
 
 #calculate skenwess and eveness of transitions
 calc_evenness<-function(df){
   df%>%
     group_by(pond, cycle)%>%
     summarize(
-      skewness=skewness(weight),
+      skewEdge=ifelse(is.na(skewness(weight, na.rm = TRUE)), 0, skewness(weight, na.rm = TRUE)),
       total_weight=sum(weight),
       S=n_distinct(paste(starting_state,end_state,sep="->")), #unique state transitions
       H=-sum((weight/total_weight)*log(weight/total_weight), na.rm=TRUE), #shannon's diversity index
@@ -754,11 +788,11 @@ calc_evenness<-function(df){
       .groups="drop"
     )
 }
-Trans_evenness <- calc_evenness(trans_freq)%>%mutate(pond = as.factor(pond))%>%select(-H,-total_weight)
+Trans_evenness <- calc_evenness(trans_freq)%>%select(-H,-S,-total_weight)
 print(Trans_evenness)
 
-Trans_evenness_g1 <- calc_evenness(trans_freq_g1)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
-Trans_evenness_g2 <- calc_evenness(trans_freq_g2)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
+Trans_evenness_g1 <- calc_evenness(trans_freq_g1)%>%select(-H,-S,-total_weight)
+Trans_evenness_g2 <- calc_evenness(trans_freq_g2)%>%select(-H,-S,-total_weight)
 Trans_evenness_g3 <- calc_evenness(trans_freq_g3)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
 
 
@@ -768,14 +802,14 @@ ggplot(Trans_evenness, aes(x=pond, y=J, color=cycle))+
    theme_bw()+
   labs(x="Pond cummunity", y="Edge evenness index (J)")
 
-ggplot(Trans_evenness, aes(x=pond, y=skewness, color=cycle))+
+ggplot(Trans_evenness, aes(x=pond, y=skewEdge, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
    theme_bw()+
   labs(x="Pond cummunity", y="skewness")
 
 
-skewtest<-lm(skewness~pond*cycle, data=Trans_evenness)
+skewtest<-lm(skewEdge~pond*cycle, data=Trans_evenness)
 Anova(skewtest)
 
 Jtest<-lm(J~pond*cycle, data=Trans_evenness)
@@ -785,10 +819,10 @@ Anova(Jtest)
 
 ```{r transition_metrics}
 #load data
-community_networks_weighted<-readRDS(here("./output/frog_community_networks_weighted.rds"))
-community_networks_weighted_g1<-readRDS(here("./output/frog_community_networks_weighted_g1.rds"))
-community_networks_weighted_g2<-readRDS(here("./output/frog_community_networks_weighted_g2.rds"))
-community_networks_weighted_g3<-readRDS(here("./output/frog_community_networks_weighted_g3.rds"))
+community_networks_weighted<-read_rds(here("./output/frog_community_networks_weighted.rds"))
+community_networks_weighted_g1<-read_rds(here("./output/frog_community_networks_weighted_g1.rds"))
+community_networks_weighted_g2<-read_rds(here("./output/frog_community_networks_weighted_g2.rds"))
+community_networks_weighted_g3<-read_rds(here("./output/frog_community_networks_weighted_g3.rds"))
 
 #note that we have weighted graphs, but in igraph weights indicate a "cost". In our case, we assume connections are stronger with higher weights, so we need to use the inverse of weights for weighted metrics.
 
@@ -891,27 +925,23 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
   return(results)
 }
 
-sp_num<-read_csv(here("./output/frog_pond_cycle_NoSpec.csv"))  %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
+sp_num<-read_rds(here("./output/frog_pond_cycle_NoSpec.rds"))
 
-state_connectance_w <- analyze_network_metrics(community_networks_weighted, sp_num)%>%mutate(pond=as.factor(pond))
-
-state_connectance_w_g1 <- analyze_network_metrics(community_networks_weighted_g1, sp_num)%>%mutate(pond=as.factor(pond))
-
-state_connectance_w_g2 <- analyze_network_metrics(community_networks_weighted_g2, sp_num)%>%mutate(pond=as.factor(pond))
-
+state_connectance_w <- analyze_network_metrics(community_networks_weighted, sp_num)
+state_connectance_w_g1 <- analyze_network_metrics(community_networks_weighted_g1, sp_num)
+state_connectance_w_g2 <- analyze_network_metrics(community_networks_weighted_g2, sp_num)
 state_connectance_w_g3 <- analyze_network_metrics(community_networks_weighted_g3, sp_num)%>%mutate(pond=as.factor(pond))
-
 ```
 
 ## Burstiness
 We will calculate temporal distribution of events, in this case when a new state appears. This gives us a good idea of when and how changes are clumped in time or not. Values=1 indicate perfect (periodic) spacing, = 0 random, >0 clumping. Note, we need to decide if we include empty states in this calculation
 ```{r burstiness}
 #get data, we'll just use basic community state data for simplicity but could do this with network data too
-community_states<-read_csv(here("./output/frog_CommunityStates.csv"))
-community_statesNonone<-read_csv(here("./output/frog_CommunityStates.csv"))%>%subset(state!="none") #this is a subset of the data where we exclude periods without any species being active (so no "empty" states)
-community_states_g1<-read_csv(here("./output/frog_CommunityStates_g1.csv"))
-community_states_g2<-read_csv(here("./output/frog_CommunityStates_g2.csv"))
-community_states_g3<-read_csv(here("./output/frog_CommunityStates_g3.csv"))
+community_states<-read_rds(here("./output/frog_CommunityStates.rds"))
+community_statesNonone<-read_rds(here("./output/frog_CommunityStates.rds"))%>%subset(state!="none") #this is a subset of the data where we exclude periods without any species being active (so no "empty" states)
+community_states_g1<-read_rds(here("./output/frog_CommunityStates_g1.rds"))
+community_states_g2<-read_rds(here("./output/frog_CommunityStates_g2.rds"))
+community_states_g3<-read_rds(here("./output/frog_CommunityStates_g3.rds"))
 
 # Function to compute burstiness coefficient B
 calculate_burstiness <- function(df) {
@@ -927,11 +957,11 @@ calculate_burstiness <- function(df) {
 }
 
 # Calculate it for all data sets with different gap rules
-burstiness_results<-calculate_burstiness(community_states) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-burstiness_resultsNonone<-calculate_burstiness(community_statesNonone) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-burstiness_results_g1<-calculate_burstiness(community_states_g1) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-burstiness_results_g2<-calculate_burstiness(community_states_g2) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-burstiness_results_g3<-calculate_burstiness(community_states_g3) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
+burstiness_results<-calculate_burstiness(community_states) 
+burstiness_resultsNonone<-calculate_burstiness(community_statesNonone)
+burstiness_results_g1<-calculate_burstiness(community_states_g1)
+burstiness_results_g2<-calculate_burstiness(community_states_g2)
+burstiness_results_g3<-calculate_burstiness(community_states_g3)
 
 #let's look at it
 ggplot(burstiness_results, aes(x=pond,y=B, color=cycle))+
@@ -1096,10 +1126,10 @@ summarize_memory <- function(memory_results) {
   return(summary_stats)
 }
 
-memory_results <- memory_analysis(community_states) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-memory_results_g1 <- memory_analysis(community_states_g1) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-memory_results_g2 <- memory_analysis(community_states_g2) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
-memory_results_g3 <- memory_analysis(community_states_g3) %>%mutate(pond=as.factor(pond), cycle=as.numeric(cycle))
+memory_results <- memory_analysis(community_states) 
+memory_results_g1 <- memory_analysis(community_states_g1) 
+memory_results_g2 <- memory_analysis(community_states_g2)
+memory_results_g3 <- memory_analysis(community_states_g3)
 
 ggplot(memory_results, aes(x=pond, y=time_memory, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
@@ -1116,7 +1146,7 @@ ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
   facet_wrap(~pond)
 
 #test for differences
-modelM<-lm(time_memory~(cycle)*as.factor(pond), data=memory_results)
+modelM<-lm(time_memory~(cycle)*pond, data=memory_results)
 library(car)
 Anova(modelM)
 #so differences in memory across ponds, but no consistent temporal effect. Higher order polynomials didn't change that
@@ -1127,10 +1157,10 @@ Lets combine both with all the other network metrics into one data file
 ```{r combine_metrics, warning=FALSE}
 
 # Assume list of data frames
-df_list <- list(state_connectance_w,Trans_evenness,burstiness_results,memory_results, timing_sum)
-df_list_g1 <- list(state_connectance_w_g1,Trans_evenness_g1,burstiness_results_g1,memory_results_g1, timing_sum_g1)
-df_list_g2 <- list(state_connectance_w_g2,Trans_evenness_g2,burstiness_results_g2,memory_results_g2,timing_sum_g2)
-df_list_g3 <- list(state_connectance_w_g3,Trans_evenness_g3,burstiness_results_g3,memory_results_g3, timing_sum_g3)
+df_list <- list(state_connectance_w,Trans_evenness,burstiness_results,memory_results, com_state_Network,timing_sum)
+df_list_g1 <- list(state_connectance_w_g1,Trans_evenness_g1,burstiness_results_g1,memory_results_g1, com_state_Network_g1,timing_sum_g1)
+df_list_g2 <- list(state_connectance_w_g2,Trans_evenness_g2,burstiness_results_g2,memory_results_g2,com_state_Network_g2,timing_sum_g2)
+df_list_g3 <- list(state_connectance_w_g3,Trans_evenness_g3,burstiness_results_g3,memory_results_g3,com_state_Network_g3, timing_sum_g3)
 
 # Join all by "id" using left_join
 Transition_metrics <- reduce(df_list, left_join, by = c("pond", "cycle")) %>%
@@ -1143,10 +1173,9 @@ Transition_metrics_g3 <- reduce(df_list_g3, left_join, by = c("pond", "cycle")) 
   select(pond, cycle,Pond_Cycle,No_Spec, everything())
 
 #save the data
-write_csv(Transition_metrics, here("./output/frog_transition_matrix_metrics.csv"))
-write_csv(Transition_metrics_g1, here("./output/frog_transition_matrix_metrics_g1.csv"))
-write_csv(Transition_metrics_g2, here("./output/frog_transition_matrix_metrics_g2.csv"))
-write_csv(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g3.csv"))
-
+write_rds(Transition_metrics, here("./output/frog_transition_matrix_metrics.rds"))
+write_rds(Transition_metrics_g1, here("./output/frog_transition_matrix_metrics_g1.rds"))
+write_rds(Transition_metrics_g2, here("./output/frog_transition_matrix_metrics_g2.rds"))
+write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g3.rds"))
 
 ```

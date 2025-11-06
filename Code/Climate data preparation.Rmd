@@ -25,7 +25,8 @@ The code here prepares the climate data from our frog pond location for general 
           "knitr",
           "here",
           "lubridate",
-          "paletteer"
+          "paletteer",
+          "ggpubr"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -61,7 +62,7 @@ sumclimaY<-climate%>%group_by(cycle)%>%
             meanMinT=mean(TMIN,na.rm = TRUE),
             day100=sum(TMAX > 35,na.rm = TRUE),
             meanPrec=mean(PRCP,na.rm=TRUE),
-            cumPrec=sum(PRCP, na.rm=TRUE))
+            noPrec=sum(PRCP==0,na.rm=TRUE))
 ```
 
 # Extreme climate year
@@ -74,14 +75,20 @@ sumclimaY<-subset(sumclimaY, cycle<25)%>%
     mMinTY=mean(meanMinT),
     mPrecY=mean(meanPrec),
     mday100Y=mean(day100),
+    mNoPrec=mean(noPrec),
     eMaxTY=mean(meanMaxT)+sd(meanMaxT),
     eMinTY=mean(meanMinT)-sd(meanMinT),
     ePrecY=mean(meanPrec)-sd(meanPrec),
-    eday100Y=mean(day100)+sd(day100))%>%
+    eNoPrec=mean(mNoPrec)+sd(noPrec),
+    eday100Y=mean(day100)+sd(day100),
+    )%>%
   mutate(exthighTemp=ifelse(meanMaxT>eMaxTY, "Yes", "No"),
-                  extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
-                  extlongHeat=ifelse(day100>eday100Y, "Yes", "No"),
-                  extDry=ifelse(meanPrec<ePrecY, "Yes", "No"))
+         extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
+         extlongHeat=ifelse(day100>eday100Y, "Yes", "No"),
+         extDry=ifelse(meanPrec<ePrecY, "Yes", "No"),
+         extDryDays=ifelse(noPrec>eNoPrec, "Yes", "No"),
+         extHot=ifelse(exthighTemp=="Yes" | extlongHeat=="Yes", "Yes", "No"),
+         extDryT=ifelse(extDry=="Yes" | extDryDays=="Yes", "Yes", "No"))
 
 
 ggplot(subset(sumclimaY),aes(x=cycle,y=meanMaxT))+
@@ -105,6 +112,14 @@ ggplot(subset(sumclimaY),aes(x=cycle,y=day100))+
   geom_ribbon(aes(ymin = mday100Y-sd(day100), ymax = eday100Y), alpha = 0.3, fill = "grey") +
   geom_hline(aes(yintercept=mday100Y),linetype="dashed")+
   theme_bw()
+
+ggplot(subset(sumclimaY),aes(x=cycle,y=noPrec))+
+  geom_line()+
+  geom_point(aes(color=extDryDays))+
+  geom_hline(aes(yintercept=mNoPrec),linetype="dashed")+
+  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey") +
+  theme_bw()
+
   
 write.csv(sumclimaY, here("output","sumclimaY.csv"), row.names = FALSE)
 ```
@@ -164,6 +179,7 @@ drought<-drought%>%mutate(Dseverity=D0+D1*2+D2*3+D3*4+D4*4)
 sumdrought<-drought%>%group_by(cycle)%>%
   summarize(Dsevmean=mean(Dseverity),Dext=max(Dseverity))
 ggplot(sumdrought, aes(x=cycle, y=Dext))+geom_line()+geom_point()+theme_bw()
+ggplot(sumdrought, aes(x=cycle, y=Dsevmean))+geom_line()+geom_point()+theme_bw()
 
 
 #add it to climate data
@@ -183,7 +199,7 @@ write_csv(scaledsumclimaY, here("output","frog_climate_data_annual_scaled.csv"))
 PCA of weather data
 ```{r}
 sumclimaY<-read.csv(here("output","frog_climate_data_annualsum.csv"))
-scaledsumclimaY<-read.csv(here("output","frog_climate_data_annual_scaled.csv"))
+scaledsumclimaY<-read.csv(here("output","frog_climate_data_annual_scaled.csv"))%>%select(-cumPrec)
 
 library("factoextra")
 
