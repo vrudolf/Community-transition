@@ -32,7 +32,9 @@ We will examine how climate variables are linked to different aspects of communi
           "flextable",
           "stringr",
           "ggpubr",
-          "broom.mixed"
+          "broom.mixed",
+          "lmerTest",
+          "rlang"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -504,7 +506,11 @@ ggplot(netclimR,aes(x=pond,y=B,color=extDryT))+
 plot effect sizes of extreme drought and temperature
 ```{r}
 # Create alternating background - need to expand for all terms
-background_data <- res %>%
+
+res_prep <- res %>%
+  mutate(significant = p.value < 0.05)
+
+background_data <- res_prep %>%
   filter(term != "(Intercept)") %>%
   distinct(response, term) %>%
   mutate(row_num = as.numeric(factor(response, 
@@ -530,30 +536,29 @@ variable_labels <- c(
   "time_memory" = "Memory"
 )
 # Create a coefficient plot faceted by predictor
-coef.plot <- res %>%
-  mutate(significant = p.value < 0.05) %>%
-  ggplot(aes(x = estimate, y = response, color=term)) +
+coef.plot <- res_prep %>%
+  ggplot(aes(x = estimate, y = response, color = term)) +
   geom_tile(data = background_data,
             aes(y = response, x = 0, height = 1, width = Inf, fill = fill_color), 
-            color = NA) +
+            color = NA,
+            inherit.aes = FALSE) + 
   scale_fill_identity() +
   geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high), 
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
                  height = 0.0, linewidth = 1) +
-  geom_point(size = 3) +
+  geom_point(aes(alpha = significant), size = 3) +
+  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide="none") +
   facet_wrap(~ term, ncol = 2, 
-             labeller = labeller(term = c(
-               "extHotYes" = "Extreme Hot",
-               "extDryTYes" = "Extreme Dry"
-               #"burstinessRain" = "Rain Burstiness"
-               ))) +
+             labeller=labeller(term = c(
+               "extDryTYes" = "Extreme Dry",
+               "extHotYes" = "Extreme Hot"))) +
   scale_y_discrete(
     limits = rev(variable.for.extanalysis),
     labels = rev(variable_labels)) +
   labs(x = "Standardized coefficients and 95% CI", y = "") + 
   scale_color_manual(
-  values = c("extHotYes" = "#E69F00", 
-             "extDryTYes" = "#56B4E9"), guide="none")+
+    values = c("extDryTYes" = "#A65F32", 
+               "extHotYes" = "#CC3333"), guide="none")+
   theme_pubr(base_size = 16) +
   theme(strip.background = element_blank(),
         strip.text = element_text(size = 18, face = "bold"),
@@ -567,6 +572,7 @@ coef.plot
 
 #Network vs Weather PCA analysis
 Instead of using all the different weather variables, we can also use the PCA of climate. Only two were important, which makes this a little bit easier
+##PCA analysis
 ```{r metric_WeatherPCA}
 climatePCA<-read_csv(here("./output/frog_WeatherPCA.csv"))
 netclimPC<-left_join(netclim,climatePCA)
@@ -575,170 +581,42 @@ netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
 currentPCdata<-netclimPC
+
 #note, I could test for random pond effect using ranova function of lmerTest package
 #i can also use the performance package to quantify effect size as explained variance for random effect.
 #should I standardize all metrics first?
 
-mSPC <- lmer(No_Spec~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mbPC <- lmer(betweenness~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mbwPC <- lmer(betweenness_weighted~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mcPC <- lmer(log(Connectance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to meet normal distribution assumption
-mEPC <- lmer(TotalEdges~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mmPC <- lmer(modularity~PC1+PC2+(1|pond)+cycle, data=currentPCdata) 
-mDPC <- lmer(log(mean_Distance)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to better fit normal distribution
-mcenPC <- lmer(log(harm.centrality)~PC1+PC2+(1|pond)+cycle, data=currentPCdata) #transformed to better fit normal distribution
-mBurstPC <- lmer(B~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mMemPC <- lmer(log(1+time_memory)~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mJPC <- lmer(J~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mSkewPC <- lmer(skewEdge~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mERPC <- lmer(event.rate~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mDayOnsetPC <- lmer(meanDayOnset~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mDurPC <- lmer(meanDurAv~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mSkewDurPC <- lmer(skewDur~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
-mFreqPC <- lmer(freqStateAv~PC1+PC2+(1|pond)+cycle, data=currentPCdata)
 
+#NOTE, CYCLE REALLY SHOULD NOT BE IN THE MODEL BC IT SUCKS UP ALL THE VARIANCE! BETTER TO HAVE SEPARATE ANALYSIS OF POND AND CYCLE
+#get variables to analyze
+variable.for.extanalysis<-c("No_Spec", "Unique_Nodes","TotalEdges","Connectance","betweenness", "modularity", "mean_Distance", "skewEdge", "B", "meanDurAv", "freqStateAv", "skewDur", "event.rate", "time_memory")
 
-# Create a list of models with descriptive names
-modelsPCA <- list(
-  "No_Species" = mSPC,
-  "Total_Edges" = mEPC,
-  "Edge_Div"=mJPC,
-  "Edge_skew"=mSkewPC,
-  "Connectance" = mcPC,
-  "Harmonic_Centrality" = mcenPC,
-  "Betweenness" = mbPC,
-  "WeightedBetweenness" = mbwPC,
-  "Mean_Distance" = mDPC,
-  "Modularity" = mmPC,
-  "Burstiness" = mBurstPC,
-  "Memory"= mMemPC,
-  "EventRate"= mERPC,
-  "MeanOnset"= mDayOnsetPC, 
-  "Node_Duration"=mDurPC,
-  "Skew_Dur"=mSkewDurPC,
-  "Node_freq"=mFreqPC
-)
+#scale data to be comparable but first log-transform two variables to improve lmer model fit
+currentPCdataS<-currentPCdata%>% 
+  mutate(across(c("Connectance", "mean_Distance"), log))
 
-# Function to extract ANOVA results and coefficient information
-extract_anova_results <- function(model, model_name) {
-  anova_result <- Anova(model)
-  coef_summary <- summary(model)$coefficients
+currentPCdataS[variable.for.extanalysis] <- lapply(currentPCdata[variable.for.extanalysis], scale)
+#analyze the data
+
+resPCA <- map_dfr(variable.for.extanalysis, function(response) {
+  # Fit the mixed model for this response
+  model <- lmerTest::lmer(as.formula(paste(response,"~ PC1+PC2 + (1 | pond)")), data = currentPCdataS)
   
-  # Get fixed effects names (excluding random effects)
-  fixed_effects <- rownames(coef_summary)
-  anova_effects <- rownames(anova_result)
-  
-  # Initialize vectors for effect sizes and standard errors
-  effect_sizes <- rep(NA, length(anova_effects))
-  std_errors <- rep(NA, length(anova_effects))
-  
-  # For each ANOVA effect, find corresponding coefficient(s)
-  for(i in 1:length(anova_effects)) {
-    effect_name <- anova_effects[i]
-    
-    # Find matching coefficients
-    matching_coefs <- grep(effect_name, fixed_effects, value = TRUE)
-    
-    # If no direct match, try alternative matching patterns
-    if(length(matching_coefs) == 0) {
-      if(grepl(":", effect_name)) {
-        # Handle interactions
-        terms <- strsplit(effect_name, ":")[[1]]
-        matching_coefs <- fixed_effects[sapply(fixed_effects, function(x) {
-          all(sapply(terms, function(term) grepl(term, x)))
-        })]
-      } else {
-        # Single term
-        matching_coefs <- fixed_effects[grepl(effect_name, fixed_effects)]
-      }
-    }
-    
-    # Take the first matching coefficient if multiple found
-    if(length(matching_coefs) > 0) {
-      primary_coef <- matching_coefs[1]
-      coef_index <- which(fixed_effects == primary_coef)
-      if(length(coef_index) > 0) {
-        effect_sizes[i] <- round(coef_summary[coef_index, "Estimate"], 4)
-        std_errors[i] <- round(coef_summary[coef_index, "Std. Error"], 4)
-      }
-    }
+  # Tidy model output: fixed effects only, with confidence intervals
+  broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+    mutate(response = response)%>%
+    filter(!str_detect(term,"(Intercept)"))
   }
-  
-  # Create results data frame
-  results_df <- data.frame(
-    Model = model_name,
-    Effect = anova_effects,
-    Effect_Size = effect_sizes,
-    Std_Error = std_errors,
-    Chisq = round(anova_result$Chisq, 3),
-    Df = anova_result$Df,
-    P_value = round(anova_result$`Pr(>Chisq)`, 4),
-    Significance = ifelse(anova_result$`Pr(>Chisq)` < 0.001, "***",
-                         ifelse(anova_result$`Pr(>Chisq)` < 0.01, "**",
-                               ifelse(anova_result$`Pr(>Chisq)` < 0.05, "*",
-                                     ifelse(anova_result$`Pr(>Chisq)` < 0.1, ".", ""))))
   )
-  
-  return(results_df)
-}
-
-# Apply the function to all models
-all_resultsPCA <- do.call(rbind, mapply(extract_anova_results, modelsPCA, names(modelsPCA), SIMPLIFY = FALSE))
-
-# Reset row names
-rownames(all_resultsPCA) <- NULL
-
-# Create wide format table of p-values across models
-pivot_tablePCA <- all_resultsPCA %>%
-  select(Model, Effect, P_value) %>%
-  pivot_wider(names_from = Model, values_from = P_value) %>%
-  arrange(Effect)
-
-# Format as a flextable for Word
-pivot_tablePCA %>%
-  flextable() %>%
-  set_caption("Table: P-values Across All Models") %>%
-  theme_booktabs() %>%
-  bold(part = "header") %>%
-  align(align = "center", part = "all") %>%
-  autofit()
-
-# Create effect size comparison table
-effect_size_tablePCA <- all_resultsPCA %>%
-  select(Model, Effect, Effect_Size) %>%
-  pivot_wider(names_from = Model, values_from = Effect_Size) %>%
-  arrange(Effect)
-#Print formatted flextable for Word output
-effect_size_tablePCA%>%
-  flextable()%>%
-  set_caption("Table: Effect Size across all models")%>%
-  theme_booktabs()%>%
-  bold(part="header")%>%
-  align(align="center", part="all")%>%
-  autofit
-
-# Create standard error comparison table
-std_error_tablePCA <- all_resultsPCA %>%
-  select(Model, Effect, Std_Error) %>%
-  pivot_wider(names_from = Model, values_from = Std_Error) %>%
-  arrange(Effect)
-#Print formatted flextable for Word output
-std_error_tablePCA%>%
-  flextable()%>%
-  set_caption("Table: Standard errors across all models")%>%
-  theme_booktabs()%>%
-  bold(part="header")%>%
-  align(align="center", part="all")%>%
-  autofit
-
 
 # Create significance pattern table
-sig_tablePCA <- all_resultsPCA %>%
-  select(Model, Effect, Significance) %>%
-  mutate(interaction_level = str_count(Effect, ":")) %>%
-  arrange(interaction_level, Effect) %>%
-  select(-interaction_level) %>%
-  pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
+sig_tablePCA <- resPCA %>%
+  mutate(response=variable_labels[response])%>%
+  select(response, term,p.value) %>%
+  mutate(p.value = round(p.value, 4)) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = p.value)
 
 # Print formatted flextable for Word output
 sig_tablePCA %>%
@@ -747,5 +625,57 @@ sig_tablePCA %>%
   theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
   bold(part = "header") %>%   # Make header bold
   align(align = "center", part = "all") %>%  # Center all text
-  autofit()                   # Auto-adjust column width
+  autofit()  
+
 ```
+
+##PCA analysis effect size plot
+```{r}
+# Create alternating background - need to expand for all terms
+resPCA_prep <- resPCA %>%
+  mutate(significant = p.value < 0.05)
+
+background_data <- resPCA_prep %>%
+  distinct(response, term) %>%
+  mutate(row_num = as.numeric(factor(response, 
+                                     levels =
+                                       variable.for.extanalysis)))%>%
+  mutate(fill_color = ifelse(row_num %% 2 == 0, "grey95", "white"))
+
+
+# Create a coefficient plot faceted by predictor
+
+coef.plotPCA <- resPCA_prep %>%
+  ggplot(aes(x = estimate, y = response, color = term)) +
+  geom_tile(data = background_data,
+            aes(y = response, x = 0, height = 1, width = Inf, fill = fill_color), 
+            color = NA,
+            inherit.aes = FALSE) + 
+  scale_fill_identity() +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50") +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
+                 height = 0.0, linewidth = 1) +
+  geom_point(aes(alpha = significant), size = 3) +
+  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide="none") +
+  facet_wrap(~ term, ncol = 2, 
+             labeller=labeller(term = c(
+               "PC1" = "Weather PCA1",
+               "PC2" = "Weather PCA2"))) +
+  scale_y_discrete(
+    limits = rev(variable.for.extanalysis),
+    labels = rev(variable_labels)) +
+  labs(x = "Standardized coefficients and 95% CI", y = "") + 
+  scale_color_manual(
+    values = c("PC1" = "#33B8CC", 
+               "PC2" = "#CCAA33"), guide="none")+
+  theme_pubr(base_size = 16) +
+  theme(strip.background = element_blank(),
+        strip.text = element_text(size = 18, face = "bold"),
+        panel.spacing = unit(1, "lines"), 
+        axis.text.x = element_text(size = 14), 
+        axis.text.y = element_text(size = 16), 
+        axis.title = element_text(size = 18))
+
+coef.plotPCA
+```
+
