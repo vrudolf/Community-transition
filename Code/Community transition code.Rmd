@@ -775,38 +775,36 @@ trans_freq_g1<-read_rds(here("./output/frog_trans_markov_g1.rds"))
 trans_freq_g2<-read_rds(here("./output/frog_trans_markov_g2.rds"))
 trans_freq_g3<-read_rds(here("./output/frog_trans_markov_g3.rds"))
 
-#calculate skenwess and eveness of transitions
-calc_evenness<-function(df){
+#calculate skenwess and frequency of transitions
+calc_skew<-function(df){
   df%>%
     group_by(pond, cycle)%>%
     summarize(
       skewEdge=ifelse(is.na(skewness(weight, na.rm = TRUE)), 0, skewness(weight, na.rm = TRUE)),
       total_weight=sum(weight),
-      S=n_distinct(paste(starting_state,end_state,sep="->")), #unique state transitions
-      H=-sum((weight/total_weight)*log(weight/total_weight), na.rm=TRUE), #shannon's diversity index
-      J=H/log(S),
+      ave_Edge_weight=mean(weight),
       .groups="drop"
     )
 }
-Trans_evenness <- calc_evenness(trans_freq)%>%select(-H,-S,-total_weight)
+Trans_evenness <- calc_skew(trans_freq)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
 print(Trans_evenness)
 
-Trans_evenness_g1 <- calc_evenness(trans_freq_g1)%>%select(-H,-S,-total_weight)
-Trans_evenness_g2 <- calc_evenness(trans_freq_g2)%>%select(-H,-S,-total_weight)
-Trans_evenness_g3 <- calc_evenness(trans_freq_g3)%>%mutate(pond = as.factor(pond))%>%select(-H,-S,-total_weight)
+Trans_evenness_g1 <- calc_skew(trans_freq_g1)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
+Trans_evenness_g2 <- calc_skew(trans_freq_g2)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
+Trans_evenness_g3 <- calc_skew(trans_freq_g3)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
 
-
-ggplot(Trans_evenness, aes(x=pond, y=J, color=cycle))+
-  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
-   theme_bw()+
-  labs(x="Pond cummunity", y="Edge evenness index (J)")
 
 ggplot(Trans_evenness, aes(x=pond, y=skewEdge, color=cycle))+
   stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
    theme_bw()+
-  labs(x="Pond cummunity", y="skewness")
+  labs(x="Pond cummunity", y="Edge skewness")
+
+ggplot(Trans_evenness, aes(x=pond, y=ave_Edge_weight, color=cycle))+
+  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
+  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+   theme_bw()+
+  labs(x="Pond cummunity", y="Average Edge weight")
 
 
 skewtest<-lm(skewEdge~pond*cycle, data=Trans_evenness)
