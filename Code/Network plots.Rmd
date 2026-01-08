@@ -1,0 +1,317 @@
+---
+title: "NetworkPlots"
+author: "Volker Rudolf"
+date: "2025-12-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+#Goals
+The goal of this analysis is to turn species phenologies into a network of community state transitions. When species co-occur, they form a community state, and each species combination is a unique state, which can occur more than once. Each state has a start and ending date, and transitions into a new state. This creates a network that we will analyze to better understand how communities change
+
+### Load packages
+```{r, warning=FALSE, message=FALSE}
+ #Load packages
+  #list of packages that are needed
+  pack<-c("tidyverse",
+          "tsna",
+          "ndtv",
+          "knitr",
+          "here",
+          "igraph",
+          "ggraph"
+          )
+  #check whether packages are installed and load them, if not get and then load
+ package.check <- lapply(pack, FUN = function(x){
+    if (!require(x, character.only = TRUE)) 
+      {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+      }
+    })
+   #search() #verify that packages are loaded
+
+```
+
+Load data & get variables to plot
+```{r}
+#simple transition matrix has each state, with start and end date and duration
+community_states<-readRDS(here("./output/frog_CommunityStates.rds"))
+
+#calculate average node duration and record species in a state
+node_data_overall <- community_states %>%
+  group_by(pond, cycle, state) %>%
+  summarise(
+    avg_duration = mean(duration, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+# Calculate Edge Weights (Frequency) per Group
+edge_data_grouped <- community_states %>%
+  group_by(pond, cycle) %>%
+  mutate(
+    from = state,
+    to = lead(state)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(to)) %>%
+  group_by(pond, cycle, from, to) %>%
+  summarise(
+    frequency = n(),
+    .groups = 'drop'
+  )
+
+# Separate the data frames into a list of nested data frames (one per group)
+nested_dataEW <- edge_data_grouped %>%
+  group_by(pond, cycle) %>%
+  nest(edges = c(from, to, frequency))
+
+node_data_nested <- node_data_overall %>%
+  group_by(pond, cycle) %>%
+  nest(nodes = c(state, avg_duration))
+
+# Join the nested node and edge data
+graph_data_list <- inner_join(nested_dataEW, node_data_nested, by = c("pond", "cycle"))
+
+```
+
+Graph the networks
+```{r}
+# Function to Create and Plot Graph
+create_and_plot_graphD <- function(pond, cycle, edges, nodes) {
+  # Prep the vertices data frame for igraph
+  all_states <- unique(c(nodes$state, edges$from, edges$to))
+  vertices_df <- data.frame(state = all_states) %>%
+    left_join(nodes, by = "state") %>%
+    replace_na(list(avg_duration = 0))
+
+  # Create igraph object
+  graph <- graph_from_data_frame(
+    d = edges,
+    vertices = vertices_df,
+    directed = TRUE
+  )
+
+  # Plotting parameters
+  size_scale <- 25
+
+  p <- ggraph(graph, layout = 'nicely') +
+    geom_edge_fan(
+      aes(alpha = frequency, width = log(frequency), color="#F05039"),
+      arrow = arrow(length = unit(3, 'mm')),
+      end_cap = circle(5, 'mm')
+    ) +
+    scale_edge_width_continuous(range = c(0.5, 2)) +
+    scale_edge_alpha_continuous(range = c(0.5, 1)) +
+    #scale_edge_color_distiller(palette = "Reds", direction = 1) +
+    
+    geom_node_point(
+      aes(size = log(avg_duration)*2),
+      color = "skyblue"
+    ) +
+    geom_node_text(
+      aes(label = name),
+      repel = TRUE,
+      fontface = "bold",
+      size = 4
+    ) +
+    theme_graph() +
+    theme(legend.position = "none")
+
+  
+  # Return the plot object
+  return(p)
+}
+
+#Apply function for  just for one pond cycle combination
+Target_pond<-4
+Target_cycle<-23
+single_plot_data <- graph_data_list %>%
+  filter(pond == Target_pond, cycle ==Target_cycle)
+
+print(single_plot_data$plot)
+
+# Apply the function to all groups
+graph_data_list <- graph_data_list %>%
+  mutate(
+    plot = pmap(
+      .l = list(pond, cycle, edges, nodes),
+      .f = create_and_plot_graphD
+    )
+  )
+# View/Save the Plots
+# You can now access and display/save individual plots:
+# graph_data_list$plot[[1]] # Displays the first plot
+# ggsave(filename = "Pond1_Cycle1_Graph.png", plot = graph_data_list$plot[[1]])
+
+# Example: Display the first plot
+print(graph_data_list$plot[[150]])
+
+```
+Alternatively, plot each transition
+```{r}
+#select focal pond and cycle
+Focal_pond<-4
+Focal_cycle<-23
+testP<-community_transitions%>%
+  subset(pond==Focal_pond & cycle==Focal_cycle)%>%
+  select(starting_state,end_state,day)
+
+#get duration of states
+state_durations<-testP%>%
+  arrange(day)%>%
+  group_by(starting_state)%>%
+  summarize(duration=mean(c(diff(day),1)),.groups="drop")
+
+#create nodes dataframe with duration info
+nodes <- data.frame(name = unique(c(testP$starting_state, testP$end_state)))%>%
+  left_join(state_durations, by = c("name" = "starting_state")) %>%
+  replace_na(list(duration = 1))
+
+
+state_durations <- community_transitions_g3 %>%
+  subset(pond == 8 & cycle == 10) %>%
+  arrange(day) %>%
+  group_by(starting_state) %>%
+  summarize(avg_duration = mean(c(diff(day), 1)), .groups = 'drop')
+
+# Create network with node attributes
+test.network <- graph_from_data_frame(d = testP, vertices = nodes, directed = TRUE)
+
+            
+#visualize newtork with node size by duration and edge by date
+
+network_plot<-ggraph(test.network, layout = layout_as_star(
+    test.network, center = which.max(degree(test.network))[[1]]
+)) +
+    geom_edge_fan(
+      aes(color = day),
+        arrow = arrow(length = unit(0.12, "inches"), type="closed", angle=25),
+      end_gap=circle(0.25,"inches"),
+        end_cap = circle(0.1, "inches"),
+        strength = 3,
+        spread=2,
+        width = 1.2,
+        alpha = .8
+    ) +
+    geom_node_point(aes(size=duration), color="#5B2C6F") +
+    #geom_node_text(aes(label = name), size = 2, repel = TRUE) +
+    scale_edge_color_gradient(
+        low = "#2C3E50",
+        high = "#A8E6CF"
+    ) +
+  scale_size_continuous(range=c(3,12))+
+  theme_void()
+network_plot
+ggsave(here("Figures","network_plot.png"),plot=network_plot,dpi=600,width = 12, height = 8, units = "cm")
+```
+Now let's to this for all years for a specific pond
+```{r}
+# Function to create network plot for a given pond and cycle
+plot_network <- function(pond_num, cycle_num) {
+  # Calculate state durations
+  state_durations <- community_transitions %>%
+    subset(pond == pond_num & cycle == cycle_num) %>%
+    arrange(day) %>%
+    group_by(starting_state) %>%
+    summarize(avg_duration = mean(c(diff(day), 1)), .groups = 'drop')
+  
+  # Prepare edge data
+  testP <- community_transitions %>%
+    subset(pond == pond_num & cycle == cycle_num, 
+           select = c(starting_state, end_state, day))
+  
+  # Create nodes dataframe
+  nodes <- data.frame(name = unique(c(testP$starting_state, testP$end_state))) %>%
+    left_join(state_durations, by = c("name" = "starting_state")) %>%
+    replace_na(list(avg_duration = 1))
+  
+  # Create network
+  test.network <- graph_from_data_frame(d = testP, vertices = nodes, directed = TRUE)
+  
+  # Create plot
+  ggraph(test.network, layout = layout_as_star(
+      test.network, center = which.max(degree(test.network))[[1]]
+  )) +
+      geom_edge_fan(
+        aes(color = day),
+          arrow = arrow(length = unit(0.15, "inches"), type = "closed"),
+          end_cap = circle(0.25, "inches"),
+          strength = 1.8,
+          spread = 3,
+          width = 1.2,
+          alpha = 0.6
+      ) +
+      geom_node_point(aes(size = avg_duration), 
+                      fill = "#5B2C6F",
+                      color = "white",
+                      stroke = 1,
+                      shape = 21) +
+      geom_node_text(aes(label = name), size = 2.5, repel = TRUE) +
+      scale_edge_color_gradient(
+          low = "#2C3E50",
+          high = "#A8E6CF",
+          name = "Day"
+      ) +
+      scale_size_continuous(range = c(3, 10), name = "Avg Duration") +
+      theme_void() + 
+    theme(legend.position = "none")+
+      labs(title = paste("Cycle", cycle_num))
+}
+
+# Get all cycles for pond x
+focalpond<-4
+
+cycles_pond1 <- community_transitions %>%
+  filter(pond == focalpond) %>%
+  pull(cycle) %>%
+  unique() %>%
+  sort()
+
+# Create all plots
+plot_list <- lapply(cycles_pond1, function(c) plot_network(focalpond, c))
+
+# Combine using patchwork
+library(patchwork)
+wrap_plots(plot_list, ncol = 5)  # Adjust ncol as needed
+#plot a subset
+wrap_plots(plot_list[c(11, 12, 23,4, 7, 17)], ncol = 3)  # this plots 4 extreme hot and normal  years
+wrap_plots(plot_list[c(5, 10, 11, 4, 7, 15)], ncol = 3)  # this plots 4 dry  and normal years
+
+wrap_plots(plot_list[c(4,5,6, 9,10, 12, 21,22,24)], ncol = 3)  # this plots 4 dry  and normal years
+
+wrap_plots(plot_list[c(5,6,22,1 ,16,24)], ncol = 3)  
+
+wrap_plots(plot_list[c(1,6)], ncol = 2)  
+
+
+```
+
+
+
+
+
+
+playing around with tna and qgraph, but it's not ideal
+```{r}
+test.network<-community_networks_weighted[["pond_3_cycle_11"]]
+tna.net<-tna(test.network)
+
+original_weight_matrix <- as.matrix(
+    igraph::as_adjacency_matrix(
+        graph = test.network,
+        type = "both",        # Include all edges (or "directed" if preferred)
+        attr = "weight", # <-- **CRITICAL: Uses the edge attribute value**
+        sparse = FALSE        # Returns a standard R matrix
+    )
+)
+tna.net$weights<-(original_weight_matrix)
+plot(tna.net, 
+     edge.labels=FALSE,
+     cut=2,
+     edge.wdith.max=6,
+     edge.width.min=1)
+```
+

@@ -25,7 +25,8 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "beeswarm",
           "ggcorrplot",
           "broom",
-          "moments"
+          "moments",
+          "car"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -216,7 +217,7 @@ process_pond_cycle_states <- function(node_dynamic_data,
   return(result)
 }
 
-#run the function for all 4 data sets
+#run the function for all 4 versions of the data
 community_states <- process_pond_cycle_states(node_dynamic, output_suffix = "")
 
 community_states_g1 <- process_pond_cycle_states(node_dynamic_g1,output_suffix = "_g1")
@@ -269,47 +270,14 @@ saveRDS(community_transitions_g3, here("./output/frog_transit_states_g3.rds"))
 ```
 
 ## create transition networks
-
 Let's create network graphs and visualize some using the igraph package
-```{r networkplots}
+```{r transition_networks, warning=FALSE}
+#load data if needed
 community_transitions<-readRDS(here("./output/frog_transit_states.rds"))
 community_transitions_g1<-readRDS(here("./output/frog_transit_states_g1.rds"))
 community_transitions_g2<-readRDS(here("./output/frog_transit_states_g2.rds"))
 community_transitions_g3<-readRDS(here("./output/frog_transit_states_g3.rds"))
 
-
-#let's run a test for a simple pond, note it will assume first two columns are the node pairs for the edges
-testP<-community_transitions_g3%>%
-  subset(pond==4 & cycle==10, select=c(-pond, -cycle))
-
-test.network <- graph_from_data_frame(d = testP, directed = T)
-
-#basic igraph
-plot(test.network, layout=layout.circle, main="circle")
-
-#fancy version, that uses different layout and colors nodes and edges by duration and time of year
-ggraph(test.network, layout = layout_as_star(
-    test.network, center = which.max(degree(test.network))[[1]]
-)) +
-    geom_edge_fan(
-      aes(color = day),
-        arrow = arrow(length = unit(0.2, "inches")),
-        end_cap = circle(0.215, "inches"),
-        strength = 4,
-        width = 1.5,
-        alpha = 0.4
-    ) +
-    geom_node_point(size=6, color="gray") +
-    geom_node_text(aes(label = name), size = 2, repel = TRUE) +
-    scale_edge_color_gradient(
-        low = "gray24",
-        high = "greenyellow",
-    ) 
-
-```
-
-Now let's create networks for all pond x cycle combinations
-```{r transition_networks, warning=FALSE}
 # Create a list of networks, one for each pond x cycle combination
 community_networks_fun <- function(data){
   # Get the grouping keys for naming
@@ -331,6 +299,7 @@ community_networks_fun <- function(data){
   return(networks)
   }
 
+#run function for different version of the data
 community_networks<- community_networks_fun(community_transitions)
 community_networks_g1<- community_networks_fun(community_transitions_g1)
 community_networks_g2<- community_networks_fun(community_transitions_g2)
@@ -352,13 +321,15 @@ First, we look at community states,unique states, the average duration of a give
 ```{r state_stats, warning=FALSE}
 
 #look at average and standard deviation of duration of individual states, how often a state occurs, and we do this for the raw data sets or those that  ignore short activity gaps (g1-g3)
+
+#calculate mean duration of state in a given pond year
 com_state_Ave<-community_states%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
             varDur=sd(duration),
             freqState=n()
             )
-
+#repeat for all version of data set
 com_state_Ave_g1<-community_states_g1%>%
   group_by(pond, cycle,state)%>%
   summarize(meanDur=mean(duration),
@@ -379,7 +350,7 @@ com_state_Ave_g3<-community_states_g3%>%
            freqState=n()
            )
 
-#now let's get network annual averages instead of nodes 
+#now let's get network annual averages across nodes 
 com_state_Network<-com_state_Ave%>%
   group_by(pond, cycle)%>%
   summarize(meanDurAv=mean(meanDur),
@@ -407,21 +378,6 @@ com_state_Network_g3<-com_state_Ave_g3%>%
             skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
             )
 
-#and plot them
-ggplot(subset(com_state_Network), aes(y=meanDurAv, x=cycle, color=factor(pond)))+
-  stat_summary(fund.data=mean_se)+
-  theme_bw()+
-  stat_smooth(se=F)
-
-ggplot(com_state_Network, aes(x=cycle, y=freqStateAv, color=factor(pond)))+
-  geom_point()+
-  stat_smooth(se=F)+
-  theme_bw()
-
-ggplot(com_state_Network, aes(x=cycle, y=skewDur, color=factor(pond)))+
-  geom_point()+
-  stat_smooth(se=F)+
-  theme_bw()
 
 # compare frequency to exponential distribution
 lambda_df <- community_states %>%
@@ -455,7 +411,7 @@ ggplot() +
 
 ```
 
-lets calculate if duration and frequency of occurrence of a state are correlated
+let's calculate if duration and frequency of occurrence of a state are correlated
 ```{r freq_dur_state_corr, warning=FALSE}
 
 #first calculate the correlation coefficient for different data sets
@@ -480,68 +436,41 @@ corStat_dur_freq_g3 <- com_state_Ave_g3 %>%
 
 #plot the coefficients for each pond & cycle
 library(ggbeeswarm)
-ggplot(corStat_dur_freq, aes(x=pond, y=skewDur, color=cycle, size=obs))+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
-  scale_size(range = c(1, 5)) +
-  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
-  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
-  theme_bw()
 
 
-ggplot(corStat_dur_freq, aes(x=pond, y=correlation, color=cycle, size=obs))+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
+freq_dur_plot<-ggplot(corStat_dur_freq, aes(x=pond, y=correlation, color=cycle, size=obs))+
+ geom_beeswarm(side=-1L,cex=1, priority="density", alpha=0.6)+
+  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1, position=position_nudge(x=0.2))+
   scale_size(range = c(1, 5)) +
-  stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
-  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
+    scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+  labs(y="Correlation between state duration & frequency", x="Pond community")+
   theme_bw()
+
 
 ggplot(corStat_dur_freq_g1, aes(x=pond, y=correlation, color=cycle, size=obs))+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
   stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
-  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
+  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+  labs(y="Correlation between state duration & frequency", x="Pond community")+
   theme_bw()
 
 ggplot(corStat_dur_freq_g3, aes(x=pond, y=correlation, color=cycle, size=obs))+
   geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
   scale_size(range = c(1, 5)) +
   stat_summary(fun.data=mean_se, show.legend = FALSE, size=1)+
-  labs(y="Correlation of duration vs. frequency of states", x="Pond community")+
+  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+  labs(y="Correlation between state duration & frequency", x="Pond community")+
   theme_bw()
+
+ggsave(here("Figures","StateDur_Freq.png"),plot=freq_dur_plot,dpi=300,width = 8, height = 4, units = "in")
 
 ```
 
-let's see how the number of unique community states varies
-```{r}
-unique_states<-community_states%>%
-  group_by(pond, cycle)%>%
-  summarize(No_states=length(unique(state)))
-ggplot(unique_states, aes(x=cycle, y=No_states,color=pond, group=pond))+
-  geom_point()+
-  geom_smooth(se=F)+
-  theme_bw()
-
-unique_states_g1<-community_states_g1%>%
-  group_by(pond, cycle)%>%
-  summarize(No_states=length(unique(state)))
-ggplot(unique_states_g1, aes(x=cycle, y=No_states,color=pond, group=pond))+
-  geom_point()+
-  geom_smooth(se=F)+
-  theme_bw()
-
-unique_states_g3<-community_states_g3%>%
-  group_by(pond, cycle)%>%
-  summarize(No_states=length(unique(state)))
-ggplot(unique_states_g3, aes(x=cycle, y=No_states,color=pond, group=pond))+
-  geom_point()+
-  geom_smooth(se=F)+
-  theme_bw()
-
-```
 ## timing of transitions
-There is likely to be a seasonal timing of transition between states, and we can look at how this varies across ponds and seasonal cycles. Since transitions in this type of data all have a single day duration, we can simple look at the distribution of start of nodes, which indicate when transitions happen. We are really interested in the day of the cycle when they happen. Note that we look at their temporal distribution using burstiness and memory below. For now we are really focused on the timing within a cycle.
+There is likely to be a seasonal timing of transition between states, and we can look at how this varies across ponds and seasonal cycles. Since transitions in this type of data all have a single day duration, we can simple look at the distribution of start of nodes, which indicate when transitions happen. We are really interested in the day of the cycle when they happen. Note that we look at their temporal distribution using burstiness and memory below. For now we are really focused on the timing within a cycle. 
 
-```{r}
+```{r transitiontiming}
 #we need the community_states data for this which has all the info on onset and terminus
 #let's start by calculating mean and median values for duration and onset
 sum_start<-community_states%>%group_by(pond, cycle)%>%
@@ -559,12 +488,14 @@ ggplot(sum_start,aes(x=pond, y=meanDayOnset, color=cycle))+
   stat_summary(fun.data=mean_se,size=1)+
   theme_bw()
 
-
-meanDy<-lm(meanDayOnset~pond+as.factor(cycle), data=sum_start)
+meanDy<-lm(meanDayOnset~pond+as.factor(cycle), data=sum_start_g1)
 Anova(meanDy)
+```
 
+##Event rate
+we can also look at cumulative events over time in a year to see how that differs across ponds and cycles. we will define the event rate is the number of changes in community state per unit time and we calculate that by fitting a linear model to cummulative number of events.
+```{r eventrate}
 
-#we can also look at cumulative events over time in a year to see how that differs across ponds and cycles
 daily_cumulative_onsets <- community_states %>%
   count(pond, cycle, day = onset) %>%  # count onsets per day per group
   group_by(pond, cycle) %>%
@@ -599,7 +530,7 @@ daily_cumulative_onsets_g3 <- community_states_g3 %>%
   mutate(scaled_events=cum_onsets/(max(cum_onsets)))%>%
   ungroup()
 
-#plot cummulative events over time
+#plot cumulative events over time
 ggplot(subset(daily_cumulative_onsets, pond==4) , aes(x=day,y=scaled_events, group=cycle, color=cycle))+
   geom_line(size=2)+
   stat_smooth(method="lm",se=F, color="gray")+
@@ -607,7 +538,7 @@ ggplot(subset(daily_cumulative_onsets, pond==4) , aes(x=day,y=scaled_events, gro
   theme_bw()+
    scale_color_viridis_c(option = "plasma", end = 0.9)
 
-#let's fit simple linear model to this which fits impressively well (see plot above)
+#let's fit simple linear model to this data which fits impressively well (see plot above)
 eventvstime_regression <- daily_cumulative_onsets %>%
   group_by(pond, cycle) %>%
   nest() %>%
@@ -670,11 +601,17 @@ eventvstime_regression_g3 <- daily_cumulative_onsets_g3 %>%
     p_value = p.value
   )
 
-
+#let's test if this rate differs across ponds and cycles
+meanER<-lm(event.rate~pond+as.factor(cycle), data=eventvstime_regression)
+Anova(meanER)
 
 ggplot(eventvstime_regression, aes(x=pond, y=event.rate, color=cycle))+
   geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
 
+ggplot(eventvstime_regression_g1, aes(x=pond, y=event.rate, color=cycle))+
+  geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
+
+#save the estimate and add it to the response variable list
 eventvs.time<-eventvstime_regression%>%select(pond, cycle,event.rate)
 eventvs.time_g1<-eventvstime_regression_g1%>%select(pond, cycle,event.rate)
 eventvs.time_g2<-eventvstime_regression_g2%>%select(pond, cycle,event.rate)
@@ -692,7 +629,7 @@ Finally, we can look at the whole structure of the transition network. We can do
 The second option essentially ways the transition between nodes by the frequency at which the transitions occur. Note this option looses all temporal information except for pairwise transitions.
 
 ###Tansition graphs
-```{r}
+```{r transitiongraph}
 #function to turn transition matrix into a markov transition matrix that gives frequency of transitions between states
 trans_markov<-function(data){
   data%>%
@@ -739,7 +676,7 @@ community_networks_weighted_g1<- weighted_networks(trans_markov_matrix_g1)
 community_networks_weighted_g2<- weighted_networks(trans_markov_matrix_g2)
 community_networks_weighted_g3<- weighted_networks(trans_markov_matrix_g3)
 
-#Let's see how this looks ilke
+#Let's see how this looks like
 plot(community_networks_weighted[["pond_1_cycle_2"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_2"]])$weight*0.5,main = "Pond 1 Cycle 2 Network")
 plot(community_networks_weighted[["pond_1_cycle_11"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_11"]])$weight*0.5, main = "Pond 1 Cycle 11 Network")
 plot(community_networks_weighted[["pond_1_cycle_22"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_22"]])$weight*0.5, main = "Pond 1 Cycle 22 Network")
@@ -763,7 +700,7 @@ write_rds(community_networks_weighted_g2,file=here("./output/frog_community_netw
 write_rds(community_networks_weighted_g3,file=here("./output/frog_community_networks_weighted_g3.rds"))
 ```
 
-# whole network statistics on weighted transition graphs
+# Network statistics on weighted transition graphs
 We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package. Statistics like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality()), etc.
 
 ## Edge diversity  
@@ -809,12 +746,10 @@ ggplot(Trans_evenness, aes(x=pond, y=ave_Edge_weight, color=cycle))+
 
 skewtest<-lm(skewEdge~pond*cycle, data=Trans_evenness)
 Anova(skewtest)
-
-Jtest<-lm(J~pond*cycle, data=Trans_evenness)
-Anova(Jtest)
-
 ```
 
+##Network metrics
+Let's calcuate more "typical" network metrics
 ```{r transition_metrics}
 #load data
 community_networks_weighted<-read_rds(here("./output/frog_community_networks_weighted.rds"))
@@ -838,7 +773,7 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
     Unique_Nodes = numeric(network_count),
     UniqueEdges = numeric(network_count),
     TotalEdges = numeric(network_count),
-     modularity = numeric(network_count),
+    modularity = numeric(network_count),
     mean_Distance = numeric(network_count),
     harm.centrality = numeric(network_count),
     betweenness = numeric(network_count),
@@ -865,14 +800,14 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
     }
     
     # Fill in the values for this row
-      results$Pond_Cycle[i] <- name
+    results$Pond_Cycle[i] <- name
     results$Unique_Nodes[i] <- gorder(graph) #indicates unique community states
-    results$UniqueEdges[i] <- ecount(graph) #indicates the number of edges
-    results$TotalEdges[i]<-sum(E(graph)$weight) #this sums all the edges based on their weight.
-     # Calculate connectance (directed graph formula, excludes self loops not including weights)
+    results$UniqueEdges[i] <- ecount(graph) #indicates the unique number of edges (transitions)
+    results$TotalEdges[i]<-sum(E(graph)$weight) #this sums all the edges (transitions) based on their weight.
     
+     # Calculate connectance (directed graph formula, excludes self loops not including weights)
     results$Connectance[i] <- results$UniqueEdges[i] / 
-      (results$Unique_Nodes[i] * (results$Unique_Nodes[i] - 1))
+    (results$Unique_Nodes[i] * (results$Unique_Nodes[i] - 1))
     #same but with weights
     results$Weighted_connectance[i] <- sum(E(graph)$weight) / (gorder(graph) * (gorder(graph) - 1) / 2)
     
@@ -884,15 +819,14 @@ analyze_network_metrics <- function(network_list, join_data = NULL) {
     
     # Calculate centralization measures
     results$harm.centrality[i] <- mean(harmonic_centrality(graph, mode = "all", weights = 1/E(graph)$weight, normalized = TRUE)) #harmonic sets disconnect =0 not Inf
-    results$betweenness[i] <- centr_betw(graph)$centralization
+    results$betweenness[i] <- centr_betw(graph)$centralization #Freeman version
     
-    #same for betweenness but based on weights:
+    # Weighted Betweenness centralization formula (Freeman 1977)
     btw <- betweenness(graph, weights = 1/E(graph)$weight, normalized = FALSE)
 
     # Number of nodes
     n <- gorder(graph)
-    
-    # Betweenness centralization formula (Freeman 1977)
+    # Weighted Betweenness centralization formula (Freeman 1977)
     if (n > 2) {
       max_diff_sum <- sum(max(btw) - btw)
       theoretical_max <- (n - 1) * (n - 2)
@@ -1175,5 +1109,161 @@ write_rds(Transition_metrics, here("./output/frog_transition_matrix_metrics.rds"
 write_rds(Transition_metrics_g1, here("./output/frog_transition_matrix_metrics_g1.rds"))
 write_rds(Transition_metrics_g2, here("./output/frog_transition_matrix_metrics_g2.rds"))
 write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g3.rds"))
-
 ```
+
+#lets plot all response variables by pond and year
+```{r}
+library(patchwork)
+library(ggdist)
+library(gghalves)
+response_list <- c(
+  #"No_Spec"="No. Species",
+  "Unique_Nodes" = "Unique nodes",
+  "Connectance" = "Connectance",
+  "betweenness" = "Betweenness",
+  "mean_Distance" = "Mean distance",
+  "modularity" = "Modularity",
+  "freqStateAv" = "Node frequency",
+  "meanDurAv" = "Node duration",
+  "skewDur" = "Duration skewness",
+  "TotalEdges" = "Total edges",
+  "ave_Edge_weight"="Edge frequency",
+  "skewEdge" = "Skewness edge freq",
+  "event.rate" = "Event rate",
+  "B" = "Burstiness",
+  "time_memory" = "Memory"
+)
+
+make_time_pond_plot<-function(var_index){
+  col_name <- names(response_list)[var_index] 
+  label_name <- response_list[var_index]
+  ggplot(Transition_metrics, aes(x=pond, y=.data[[col_name]], color=cycle))+
+    geom_beeswarm(side=-1L,cex=1.5, alpha=0.7, priority="random")+
+    stat_summary(fun.data=mean_se, size=0.8,position=position_nudge(x=0.2))+
+    scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+    labs(x="Pond community", y=label_name)+
+    theme_bw()
+}
+
+plot_list<-lapply(seq_along(response_list), make_time_pond_plot)
+
+combined_pondY_plot<-wrap_plots(plot_list)+
+  guide_area()+
+  plot_layout(ncol=5, guides="collect")&
+  theme(
+    # Shrink the legend keys (the colored boxes/dots)
+    legend.key.size = unit(0.5, "cm"), 
+    # Shrink legend text and title
+    legend.text = element_text(size = 8),
+    legend.title = element_text(size = 9),
+    # Reduce the spacing around the legend to prevent overlap
+    legend.margin = margin(0, 0, 0, 0),
+    legend.box.margin = margin(-5, -5, -5, -5)
+  )
+print(combined_pondY_plot)
+
+  
+ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
+```
+## test for pond and cycle differences
+Here we simply want to test if there are significant differences among ponds and within ponds across years. In the later analyses on climate, we will include pond as random effect and cycle will be instead represented by the respective annual climate data. 
+```{r}
+
+library(tidyverse)
+library(broom)
+
+Transition_metrics$cycleC<-as.factor(Transition_metrics$cycle)
+variable.for.extanalysis<-c("Unique_Nodes","Connectance","betweenness", "modularity", "mean_Distance", "meanDurAv", "freqStateAv", "skewDur", "TotalEdges", "ave_Edge_weight","skewEdge","B", "event.rate", "time_memory")
+
+resultPondCycle <- map_dfr(variable.for.extanalysis, function(response) {
+  # 1. Construct the formula: response ~ pond + cycle
+  # 2. Use lm() instead of lmer()
+  model <- lm(as.formula(paste(response, "~ pond * cycleC")), data = Transition_metrics)
+  
+  # 3. Use broom::tidy for standard lm models
+  tidy(anova(model), conf.int = TRUE) %>%
+    mutate(response = response) %>%
+    # Filter out the Intercept to focus on predictors
+    select(response, term, df, statistic, p.value)%>%
+  filter(term!="Residuals")
+})
+
+library(mgcv)
+
+library(tidyverse)
+library(mgcv)
+
+library(tidyverse)
+library(mgcv)
+
+res_gam_interaction <- map_dfr(variable.for.extanalysis, function(response) {
+  
+  # 1. Fit the Reduced Model (Common trend for all ponds)
+  form_red <- as.formula(paste(response, "~ pond + s(cycle, k = 4)"))
+  mod_red <- gam(form_red, data = Transition_metrics, method = "ML") # Use ML for comparison
+  
+  # 2. Fit the Full Model (Different trends per pond)
+  # We use the 'fs' (factor smooth) basis because it provides a single p-value 
+  # for the 'difference' between levels in an ANOVA-like way
+  form_full <- as.formula(paste(response, "~ pond + s(cycle, k = 4) + s(cycle, pond, bs = 'fs', k = 4)"))
+  mod_full <- gam(form_full, data = Transition_metrics, method = "ML")
+  
+  # 3. Get the ANOVA/Summary info for the Full Model
+  a_gam <- anova(mod_full)
+  
+  # 4. Extract individual terms
+  # Parametric Pond effect
+  p_df <- data.frame(
+    term = "pond",
+    statistic = a_gam$pTerms.table["pond", "F"],
+    p.value = a_gam$pTerms.table["pond", "p-value"]
+  )
+  
+  # Global Cycle effect
+  c_df <- data.frame(
+    term = "cycle",
+    statistic = a_gam$s.table["s(cycle)", "F"],
+    p.value = a_gam$s.table["s(cycle)", "p-value"]
+  )
+  
+  # Interaction (Pond * Cycle) - Taken from the Factor Smooth term
+  # This term specifically tests the deviation of ponds from the global trend
+  i_df <- data.frame(
+    term = "pond:cycle",
+    statistic = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "F"],
+    p.value = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "p-value"]
+  )
+  
+  bind_rows(p_df, c_df, i_df) %>% mutate(response = response)
+})
+
+# Create significance pattern table
+sig_tablePondCycle <- res_gam_interaction %>%
+  mutate(response=variable_labels[response])%>%
+  select(response,term,statistic,p.value) %>%
+  mutate(p.value = round(p.value, 4), statistic=round(statistic,2)) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = c(statistic,p.value),
+    names_glue = "{term}_{.value}",
+    names_vary = "slowest")%>%
+  select(response, starts_with("pond_"), starts_with("cycle_"),contains(":"))
+
+# Print formatted flextable for Word output
+ft<-sig_tablePondCycle %>%
+  flextable() %>%
+  separate_header(split="_") %>%
+  labelizor(
+    labels = c("statistic" = "F", "p.value" = "p"),
+    part = "header"
+  ) %>%
+  theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
+  bold(part = "header") %>%   # Make header bold
+  align(align = "center", part = "all") %>%  # Center all text
+  set_caption("Table: Pond and Cycle effect") %>%
+  autofit() 
+ft
+save_as_docx(ft,path=here("Output","Anova_PondCYcle_Results_Table.docx"))
+```
+
+

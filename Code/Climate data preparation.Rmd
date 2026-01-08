@@ -4,11 +4,6 @@ author: "Volker Rudolf"
 date: "2025-06-12"
 output: html_document
 ---
----
-title: "Climate"
-output: html_document
-date: "2025-05-16"
----
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -26,7 +21,9 @@ The code here prepares the climate data from our frog pond location for general 
           "here",
           "lubridate",
           "paletteer",
-          "ggpubr"
+          "ggpubr",
+          "patchwork",
+          "factoextra"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -60,7 +57,7 @@ climate<-climate%>%mutate(cycle_day=case_when(
 sumclimaY<-climate%>%group_by(cycle)%>%
   summarize(meanMaxT=mean(TMAX,na.rm = TRUE), 
             meanMinT=mean(TMIN,na.rm = TRUE),
-            day100=sum(TMAX > 35,na.rm = TRUE),
+            hotdays=sum(TMAX > 35,na.rm = TRUE),
             meanPrec=mean(PRCP,na.rm=TRUE),
             noPrec=sum(PRCP==0,na.rm=TRUE))
 ```
@@ -68,60 +65,108 @@ sumclimaY<-climate%>%group_by(cycle)%>%
 # Extreme climate year
 We will identify extreme climate events based on the deviation from the average and plot it for reference. We'll focus on extreme hot and dry for now. 
 
-```{r}
-sumclimaY<-subset(sumclimaY, cycle<25)%>%
+```{r ExtremeYears}
+sumclimaYE<-subset(sumclimaY, cycle<25)%>%
   mutate(
     mMaxTY=mean(meanMaxT),
     mMinTY=mean(meanMinT),
     mPrecY=mean(meanPrec),
-    mday100Y=mean(day100),
+    mhotdaysY=mean(hotdays),
     mNoPrec=mean(noPrec),
     eMaxTY=mean(meanMaxT)+sd(meanMaxT),
     eMinTY=mean(meanMinT)-sd(meanMinT),
     ePrecY=mean(meanPrec)-sd(meanPrec),
     eNoPrec=mean(mNoPrec)+sd(noPrec),
-    eday100Y=mean(day100)+sd(day100),
+    ehotdaysY=mean(hotdays)+sd(hotdays),
     )%>%
   mutate(exthighTemp=ifelse(meanMaxT>eMaxTY, "Yes", "No"),
          extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
-         extlongHeat=ifelse(day100>eday100Y, "Yes", "No"),
+         extlongHeat=ifelse(hotdays>ehotdaysY, "Yes", "No"),
          extDry=ifelse(meanPrec<ePrecY, "Yes", "No"),
          extDryDays=ifelse(noPrec>eNoPrec, "Yes", "No"),
          extHot=ifelse(exthighTemp=="Yes" | extlongHeat=="Yes", "Yes", "No"),
          extDryT=ifelse(extDry=="Yes" | extDryDays=="Yes", "Yes", "No"))
 
+#save extreme categories
+write.csv(sumclimaYE, here("output","sumclimaYE.csv"), row.names = FALSE)
 
-ggplot(subset(sumclimaY),aes(x=cycle,y=meanMaxT))+
-  geom_line()+
-  geom_point(aes(color=exthighTemp))+
-  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
+#make plots
+ETmaxplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=meanMaxT))+
   geom_hline(aes(yintercept=mMaxTY),linetype="dashed")+
-  theme_bw()
-  
-
-ggplot(subset(sumclimaY),aes(x=cycle,y=meanPrec))+
   geom_line()+
-  geom_point(aes(color=extDry))+
-  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
+  geom_point(aes(color=exthighTemp), size=3)+
+  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
+  labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(1, NA), 
+    breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
+  theme_classic()+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14),)+theme(legend.position = "none")
+
+Ehotdayplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=hotdays))+
+  geom_hline(aes(yintercept=mhotdaysY),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=extlongHeat), size=3)+
+  geom_ribbon(aes(ymin = mhotdaysY-sd(hotdays), ymax = ehotdaysY), alpha = 0.3, fill = "grey") +
+  labs(y="Total hot days (>35\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+Eprecplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=meanPrec))+
   geom_hline(aes(yintercept=mPrecY),linetype="dashed")+
-  theme_bw()
-
-ggplot(subset(sumclimaY),aes(x=cycle,y=day100))+
   geom_line()+
-  geom_point(aes(color=extlongHeat))+
-  geom_ribbon(aes(ymin = mday100Y-sd(day100), ymax = eday100Y), alpha = 0.3, fill = "grey") +
-  geom_hline(aes(yintercept=mday100Y),linetype="dashed")+
-  theme_bw()
-
-ggplot(subset(sumclimaY),aes(x=cycle,y=noPrec))+
-  geom_line()+
-  geom_point(aes(color=extDryDays))+
-  geom_hline(aes(yintercept=mNoPrec),linetype="dashed")+
-  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey") +
-  theme_bw()
-
+  geom_point(aes(color=extDry), size=3)+
+  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
+  labs(y="Precipitation (mm)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
   
-write.csv(sumclimaY, here("output","sumclimaY.csv"), row.names = FALSE)
+Enorainplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=noPrec))+
+  geom_hline(aes(yintercept=mNoPrec),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=extDryDays), size=3)+
+  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey")+
+  labs(y="Total days without rain", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+combined_plot <- (ETmaxplot + Ehotdayplot) / (Eprecplot + Enorainplot)+
+  plot_layout(guides="collect")& 
+  theme(
+    legend.position = "none",
+    #axis.text = element_text(size = 8), 
+    #axis.title = element_text(size = 9, face="bold")
+  )+theme(legend.position="top")
+
+combined_plot
+ggsave(here("Figures","extremeYears.png"),plot=combined_plot,dpi=600,width = 30, height = 15, units = "cm")
+
 ```
 
 #Burstiness of rainfall
@@ -150,18 +195,14 @@ burstiness_by_cycle <- rainy_days %>%
     stats = list(calculate_burstiness(DATE)))%>%
   unnest(cols=c(stats))
 
-ggplot(burstiness_by_cycle, aes(x=cycle,y=burstinessRain))+geom_point()+theme_bw()
-ggplot(burstiness_by_cycle, aes(x=cycle,y=Rain_inter_event_time))+geom_point()+theme_bw()
-ggplot(burstiness_by_cycle, aes(x=burstinessRain,y=Rain_inter_event_time))+geom_point()+geom_smooth()+theme_bw()
-
-
 #add it to yearly climate data
 sumclimaYB<-left_join(sumclimaY,burstiness_by_cycle)
 ```
-##drought data
-This is data on the drought index, which is calculated based on "missing" rain. It comes in range of severeness categories, so not as continuous values.
-```{r drought}
 
+##drought index data
+This is data on the drought index, which is calculated based on "missing" rain and is a composite integrative index. It comes in range of severeness categories, so not as continuous values. To use it in the analysis we modify it and combine it into two single indeces, one indicating the mean drought severity, and one indicating most extreme drought status
+```{r drought}
+#load data and organize data & convert it to "frog" annual cycles
 drought<-read_csv(here("data","DroughtDataDCForest.csv"))%>%select(ValidStart,None,D0,D1,D2,D3,D4)
 drought$DATE<-as.Date(drought$ValidStart,"%m/%d/%Y")
 drought<-drought%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
@@ -185,53 +226,82 @@ ggplot(sumdrought, aes(x=cycle, y=Dsevmean))+geom_line()+geom_point()+theme_bw()
 #add it to climate data
 sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<25)
 
+```
+
+Now that we have all weather data, we save it and we scale the variables so we can compare them
+```{r scaleweatherdata}
+#save raw data with extreme years
+sumclimaYE<-left_join(sumclimaYBD, sumclimaYE)
+write_csv(sumclimaYE, here("output","frog_climate_data_annualsum.csv"))
+
 #normalize the climate data since they are all on different scales.
 scaledsumclimaY <- data.frame(
   cycle=sumclimaYBD[1],                      # keep the first column untouched
   scale(sumclimaYBD[, -1])              # scale all other columns
 )
 
-write_csv(sumclimaYBD, here("output","frog_climate_data_annualsum.csv"))
+#save scaled data
 write_csv(scaledsumclimaY, here("output","frog_climate_data_annual_scaled.csv"))
-
 ```
 
-PCA of weather data
-```{r}
-sumclimaY<-read.csv(here("output","frog_climate_data_annualsum.csv"))
-scaledsumclimaY<-read.csv(here("output","frog_climate_data_annual_scaled.csv"))%>%select(-cumPrec)
+# PCA of weather data
+Now since there are several climate variables and some are correlated, we will simplify the complex data set using PCA analysis
+```{r PCA.weather}
+#get normalzed weather data
+scaledsumclimaY<-read.csv(here("output","frog_climate_data_annual_scaled.csv"))
 
-library("factoextra")
+#rename variables for plotting
+new_var_names <- c("Max.Temp", "Min.Temp", "Hot.Days", "Mean.Prec", "Zero.Day.Prec","Burst.Rain","Days.btw.Rain", "Mean.Drougth", "Max.Drought")
+colnames(scaledsumclimaY)[-1] <- new_var_names
 
+#run pca
 weather.pca <- prcomp(scaledsumclimaY[,-1], scale = TRUE)
 print(weather.pca)
 
 #plot PC %explanation
 fviz_eig(weather.pca, col.var="blue")
 
-#plot variables for first 2 PCA
-fviz_pca_var(weather.pca,
+#plot vector loading for first 2 PCA
+pca_loading<-fviz_pca_var(weather.pca,
+             labelsize = 4,
              repel = TRUE
-             )
+             )+ 
+  labs(title = "",              # Removes the plot title
+   x = "PC1 (55.7%)",               # Relabels X-axis
+   y = "PC2 (22%)"                # Relabels Y-axis
+    ) +
+  theme_pubr(base_size = 18)
+pca_loading
+ggsave(here("Figures","WeatherPCAloading.png"),plot=pca_loading,dpi=600,width = 15, height = 15, units = "cm")
 
+  
 #plot cycles in PCA space
 cycle_values <- scaledsumclimaY[, 1]
 cycl <- get_pca_ind(weather.pca)
 cycl
 
-pcavalues<-fviz_pca_ind(weather.pca,
-             col.ind = 1:nrow(scaledsumclimaY),  # Just test indexing
-             gradient.cols = c("blue", "green"),
-             repel = TRUE
-)
-
 #plot both loading and year values
-fviz_pca_biplot(weather.pca,
-                habillage = scaledsumclimaY[, 1],
-                col.var = "black",               
-                gradient.cols = c("blue", "green"),
-                repel = TRUE,
-)
+weather_pca_biPlot<-fviz_pca_biplot(weather.pca,
+    habillage = scaledsumclimaY[, 1],
+    pointshape=16,
+    geom.var="none",
+    col.var = "black", 
+    # alpha.var = 0.8,
+    repel = TRUE, 
+    label = "all",
+    labelsize = 4
+    ) + 
+  labs(title = "",              # Removes the plot title
+   x = "PC1",               # Relabels X-axis
+   y = "PC2"                # Relabels Y-axis
+    ) +
+  scale_colour_viridis_d(option="I")+
+  theme_pubr(base_size = 18)+
+  theme(legend.position = "none")
+
+weather_pca_biPlot
+
+ggsave(here("Figures","WeatherPCABiplot.png"),plot=weather_pca_biPlot,dpi=600,width = 15, height = 15, units = "cm")
 
 
 #since PC1 and PC2 explain most, let's save both in new file for later analysis
@@ -248,34 +318,3 @@ pc_output <- pc_scores %>%select(cycle, PC1, PC2)
 # Save to CSV
 write.csv(pc_output, here("output","frog_WeatherPCA.csv"), row.names = FALSE)
 ```
-
-So based on this, the most unusual cycles are 11 and 23 and 12, 22 (driest & hottest in order), 15 (dry but cold). 4 was the wettest cycle, and 5 is borderline but  shows up in several "extreme hot" categories
-
-
-Now finally let's look at some correlations of climate variables
-```{r climate metric correlations}
-library(ggcorrplot)
-sumclimaYNoC<-scaledsumclimaY%>%subset(cycle<24)%>%select(-cycle)
-corr<-round(cor(sumclimaYNoC),1)
-p.mat<-cor_pmat(sumclimaYNoC)
-ggcorrplot(corr, hc.order=TRUE, type="lower", p.mat=p.mat)
-
-ggplot(sumclimaYNoC, aes(x=meanMaxT, y=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=cumPrec, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanMaxT, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanMinT, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=Dext, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=Dsevmean, y=meanPrec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=Dext, y=Dsevmean))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanMaxT, y=Dext))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanMaxT, y=Dsevmean))+geom_point()+stat_smooth(method="lm")+theme_bw()
-
-ggplot(sumclimaYNoC, aes(x=meanMaxT, y=burstinessRain, color=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanMinT, y=burstinessRain))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(sumclimaYNoC, aes(x=meanPrec, y=burstinessRain, color=meanMinT))+geom_point()+stat_smooth(method="lm")+theme_bw()
-
-```
-so based on this there are some unsurprisingly strong correlations, and we should not include comPrec & meanPrec, but pick one. Also meanMaxT and day100 are highly correlated. And meanMaxT has some correlation with drought and precipitation but those are different enough that we can't pick one. So let's stick with this list: meanMaxT, meanMinT, meanPrec, burstinessRain
-
-
-

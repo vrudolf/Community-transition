@@ -101,8 +101,10 @@ ggplot(metrics, aes(x=Unique_Nodes, y=TotalEdges))+geom_point()+stat_smooth(meth
 ggplot(metrics, aes(x=Weighted_connectance, y=Connectance))+geom_point()+stat_smooth(method="lm")+theme_bw()
 ggplot(metrics, aes(x=Weighted_connectance, y=harm.centrality))+geom_point()+stat_smooth(method="lm")+theme_bw()
 
+ggplot(metrics, aes(y=log(Unique_Nodes), x=No_Spec))+geom_point()+stat_smooth(method="lm")+theme_bw()
+
 ```
-So whether we ignore small gaps has  no effect on correlation between metrics evene though metrics differ between those choices. 
+So whether we ignore small gaps has  no effect on correlation between metrics even though metrics differ between those choices. 
 
 We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. Unique nodes and unique edges are also almost perfectly correlated, but we'll keep it for now since that's interesting.
 
@@ -173,314 +175,9 @@ So two PCA are enough to explain a lot of variation in all these variables, and 
 Based on these relationship, we definitely can drop unique nodes since it's almost perfectly correlated with uniqueEdges, and uniqueEdges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need  mean_t and st_t which are part of memory and burstiness. Connectance and Weighted_connectance are also highly correlated, and weighted_betweenness is also almost perfectly correlated with  harmonic centrality, so let's drop that one.
 
 
-#Network structure & climate analysis
-Ok so let's analyze the network metrics and how they are linked to climate variables. We have to options: (1) use PC1 and PC2 in the analysis which strongly reduces the number of analyses we need. But it also is hard to interpret, and can miss more nuanced relationship of individual variables. So we will do both, PC based GLMM and individual network metric GLMM analyses
-```{r, GLMM network metric climate analysis}
-#GLMM models
-currentdata<-netclim
+#Network structure & Weather 
+Instead of using all the different weather variables, we will  use the PCA of climate to avoid colinearity issues among weather variables and reduce the number of preditors. Fortunately only two PCA were really important, which makes this a little bit easier
 
-mS <- lmer(No_Spec~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mb <- lmer(betweenness~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mbw <- lmer(betweenness_weighted~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mc <- lmer(Connectance~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mE <- lmer(log(TotalEdges)~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mm <- lmer(modularity~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mD <- lmer((mean_Distance)~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mcen <- lmer(harm.centrality~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mBurst <- lmer(B~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mMem <- lmer(time_memory~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mJ <- lmer(J~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mSkE <- lmer(skewEdge~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mER <- lmer(event.rate~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mDate <- lmer(meanDayOnset~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mDur<-lmer(meanDurAv~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mSkewDur<-lmer(skewDur~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-mFreq<-lmer(freqStateAv~meanMinT+meanMaxT+meanPrec+burstinessRain+(1|pond)+cycle, data=currentdata)
-
-# Create a list of models with descriptive names
-Basemodels <- list(
-  "No_Species" = mS,
-  "Connectance" = mc,
-  "Total_Edges" = mE,
-  "Edge_Div"= mJ,
-  "Edge_skew"=mSk,
-  "Betweenness" = mb,
-  "WeightedBetweenness" = mbw,
-  "Harmonic_Centrality" = mcen,
-  "Modularity" = mm,
-  "Mean_Distance" = mD,
-  "Burstiness" = mBurst,
-  "Memory"= mMem,
-  "EventRate"= mER,
-  "MeanOnset"= mDate,
-  "Node_Duration"=mDur,
-  "Skew_Dur"=mSkewDur,
-  "Node_freq"=mFreq
-)
-
-# Function to extract ANOVA results and coefficient information
-extract_anova_results <- function(model, model_name) {
-  anova_result <- Anova(model)
-  coef_summary <- summary(model)$coefficients
-  
-  # Get fixed effects names (excluding random effects)
-  fixed_effects <- rownames(coef_summary)
-  anova_effects <- rownames(anova_result)
-  
-  # Initialize vectors for effect sizes and standard errors
-  effect_sizes <- rep(NA, length(anova_effects))
-  std_errors <- rep(NA, length(anova_effects))
-  
-  # For each ANOVA effect, find corresponding coefficient(s)
-  for(i in 1:length(anova_effects)) {
-    effect_name <- anova_effects[i]
-    
-    # Find matching coefficients
-    matching_coefs <- grep(effect_name, fixed_effects, value = TRUE)
-    
-    # If no direct match, try alternative matching patterns
-    if(length(matching_coefs) == 0) {
-      if(grepl(":", effect_name)) {
-        # Handle interactions
-        terms <- strsplit(effect_name, ":")[[1]]
-        matching_coefs <- fixed_effects[sapply(fixed_effects, function(x) {
-          all(sapply(terms, function(term) grepl(term, x)))
-        })]
-      } else {
-        # Single term
-        matching_coefs <- fixed_effects[grepl(effect_name, fixed_effects)]
-      }
-    }
-    
-    # Take the first matching coefficient if multiple found
-    if(length(matching_coefs) > 0) {
-      primary_coef <- matching_coefs[1]
-      coef_index <- which(fixed_effects == primary_coef)
-      if(length(coef_index) > 0) {
-        effect_sizes[i] <- round(coef_summary[coef_index, "Estimate"], 4)
-        std_errors[i] <- round(coef_summary[coef_index, "Std. Error"], 4)
-      }
-    }
-  }
-  
-  # Create results data frame
-  results_df <- data.frame(
-    Model = model_name,
-    Effect = anova_effects,
-    Effect_Size = effect_sizes,
-    Std_Error = std_errors,
-    Chisq = round(anova_result$Chisq, 3),
-    Df = anova_result$Df,
-    P_value = round(anova_result$`Pr(>Chisq)`, 4),
-    Significance = ifelse(anova_result$`Pr(>Chisq)` < 0.001, "***",
-                         ifelse(anova_result$`Pr(>Chisq)` < 0.01, "**",
-                               ifelse(anova_result$`Pr(>Chisq)` < 0.05, "*",
-                                     ifelse(anova_result$`Pr(>Chisq)` < 0.1, ".", ""))))
-  )
-  
-  return(results_df)
-}
-
-# Apply the function to all models
-all_results <- do.call(rbind, mapply(extract_anova_results, Basemodels, names(Basemodels), SIMPLIFY = FALSE))
-
-# Reset row names
-rownames(all_results) <- NULL
-
-# Display the complete results table
-print("Complete ANOVA Results for All Models:")
-print(all_results)
-
-# Save to CSV
-write.csv(all_results, here("./combined_anova_results.csv"), row.names = FALSE)
-
-# Create a wide format table showing p-values for each effect across models
-pivot_table <- all_results %>%
-  select(Model, Effect, P_value) %>%
-  pivot_wider(names_from = Model, values_from = P_value) %>%
-  arrange(Effect)
-
-print("P-values across all models:")
-print(pivot_table)
-
-# Create effect size comparison table
-effect_size_table <- all_results %>%
-  select(Model, Effect, Effect_Size) %>%
-  pivot_wider(names_from = Model, values_from = Effect_Size) %>%
-  arrange(Effect)
-
-print("Effect sizes across all models:")
-print(effect_size_table)
-
-# Create standard error comparison table
-std_error_table <- all_results %>%
-  select(Model, Effect, Std_Error) %>%
-  pivot_wider(names_from = Model, values_from = Std_Error) %>%
-  arrange(Effect)
-
-print("Standard errors across all models:")
-print(std_error_table)
-
-# Create significance pattern table with proper sorting
-sig_table <- all_results %>%
-  select(Model, Effect, Significance) %>%
-  # Add interaction level column (count colons in Effect names)
-  mutate(interaction_level = str_count(Effect, ":")) %>%
-  # Sort by interaction level first, then alphabetically within each level
-  arrange(interaction_level, Effect) %>%
-  # Remove the helper column and create wide format
-  select(-interaction_level) %>%
-  pivot_wider(names_from = Model, values_from = Significance, values_fill = "")
-
-print(sig_table)
-```
-Let's make some plots
-```{r}
-# Prepare data for plotting - remove rows with missing effect sizes
-plot_data <- all_results %>%
-  filter(!is.na(Effect_Size) & !is.na(Std_Error)) %>%
-  mutate(
-    # Create confidence intervals (mean ± 1 SE)
-    CI_lower = Effect_Size - Std_Error,
-    CI_upper = Effect_Size + Std_Error,
-    # Create a combined label for better readability
-    Effect_Model = paste(Effect, "-", Model, sep = " "),
-    # Add significance indicator for point shapes
-    Significant = ifelse(P_value < 0.05, "Significant", "Non-significant"),
-    # Count interaction level and create ordering
-    interaction_level = str_count(Effect, ":"),
-    # Create ordering factor for effects
-    effect_order = case_when(
-      interaction_level == 0 ~ paste("1_Main:", Effect),
-      interaction_level == 1 ~ paste("2_Two-way:", Effect),
-      interaction_level == 2 ~ paste("3_Three-way:", Effect),
-      interaction_level == 3 ~ paste("4_Four-way:", Effect),
-      TRUE ~ paste("5_Other:", Effect)
-  )
-  ) %>%
-  # Reorder Effect factor based on interaction level, then alphabetically within level
-  arrange(-interaction_level, Effect) %>%
-  mutate(Effect = factor(Effect, levels = unique(Effect)))
-
-
-# Create the main effect size plot
-effect_plot <- ggplot(plot_data, aes(x = Effect_Size, y = Effect, color = Model)) +
-  # Add vertical line at zero for reference
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", alpha = 0.7) +
-  
-  # Add error bars (whiskers)
-  geom_errorbarh(aes(xmin = CI_lower, xmax = CI_upper), 
-                 height = 0.3, alpha = 0.7, size = 0.8) +
-  
-  # Add points for effect sizes
-  geom_point(aes(shape = Significant), size = 3, alpha = 0.8) +
-  
-  # Customize scales
-  scale_shape_manual(values = c("Significant" = 16, "Non-significant" = 1)) +
-  scale_color_viridis_d(name = "Model") +
-  
-  # Labels and theme
-  labs(
-    title = "Effect Sizes Across Models",
-    subtitle = "Points show coefficient estimates, whiskers show ± 1 Standard Error",
-    x = "Effect Size (Coefficient Estimate)",
-    y = "Fixed Effects",
-    shape = "Significance (p < 0.05)"
-  ) +
-  
-  theme_minimal() +
-  theme(
-    panel.grid.minor = element_blank(),
-    legend.position = "right",
-    plot.title = element_text(size = 14, face = "bold"),
-    plot.subtitle = element_text(size = 11, color = "gray40"),
-    axis.text.y = element_text(size = 10),
-    axis.text.x = element_text(size = 10),
-    axis.title = element_text(size = 12),
-    legend.title = element_text(size = 10),
-    legend.text = element_text(size = 9)
-  ) +
-  
-  # Add better spacing
-  theme(plot.margin = margin(20, 20, 20, 20))
-
-# Display the plot
-print(effect_plot)
-
-# Alternative version: Faceted by model for clearer comparison
-faceted_plot <- ggplot(plot_data, aes(x = Effect_Size, y = Effect)) +
-  # Add vertical line at zero
-  geom_vline(xintercept = 0, linetype = "dashed", color = "gray50", alpha = 0.7) +
-  
-  # Add error bars
-  geom_errorbarh(aes(xmin = CI_lower, xmax = CI_upper, color = Significant), 
-                 height = 0.2, size = 0.8) +
-  
-  # Add points
-  geom_point(aes(color = Significant, shape = Significant), size = 2.5, alpha = 0.8) +
-  
-  # Facet by model
-  facet_wrap(~ Model, scales = "free_x", ncol = 3) +
-  
-  # Customize scales
-  scale_color_manual(values = c("Significant" = "#E31A1C", "Non-significant" = "#377EB8")) +
-  scale_shape_manual(values = c("Significant" = 16, "Non-significant" = 1)) +
-  
-  # Labels and theme
-  labs(
-    title = "Effect Sizes by Model",
-    subtitle = "Points show coefficient estimates, whiskers show ± 1 Standard Error",
-    x = "Effect Size (Coefficient Estimate)",
-    y = "Fixed Effects",
-    color = "Significance",
-    shape = "Significance"
-  ) +
-  
-  theme_minimal() +
-  theme(
-    panel.grid.minor = element_blank(),
-    strip.text = element_text(face = "bold", size = 10),
-    legend.position = "bottom",
-    plot.title = element_text(size = 14, face = "bold"),
-    plot.subtitle = element_text(size = 11, color = "gray40"),
-    axis.text.y = element_text(size = 9),
-    axis.text.x = element_text(size = 9),
-    axis.title = element_text(size = 11)
-  )
-
-print("Faceted plot:")
-print(faceted_plot)
-
-# Create a summary table of effect sizes
-summary_stats <- plot_data %>%
-  group_by(Effect) %>%
-  summarise(
-    n_models = n(),
-    mean_effect = round(mean(Effect_Size, na.rm = TRUE), 4),
-    median_effect = round(median(Effect_Size, na.rm = TRUE), 4),
-    min_effect = round(min(Effect_Size, na.rm = TRUE), 4),
-    max_effect = round(max(Effect_Size, na.rm = TRUE), 4),
-    n_significant = sum(Significant == "Significant"),
-    prop_significant = round(n_significant / n_models, 2),
-    .groups = "drop"
-  ) %>%
-  arrange(desc(abs(mean_effect)))
-
-print("Summary of effect sizes across models:")
-print(summary_stats)
-
-# Save plots
-#ggsave("effect_sizes_plot.png", effect_plot, width = 12, height = 8, dpi = 300)
-#ggsave("effect_sizes_faceted.png", faceted_plot, width = 14, height = 10, dpi = 300)
-
-
-```
-
-
-
-
-#Network vs Weather PCA analysis
-Instead of using all the different weather variables, we can also use the PCA of climate. Only two were important, which makes this a little bit easier
 ##PCA analysis
 ```{r metric_WeatherPCA}
 climatePCA<-read_csv(here("./output/frog_WeatherPCA.csv"))
@@ -489,14 +186,12 @@ netclimPC_g1<-left_join(netclim_g1,climatePCA)
 netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
-currentPCdata<-netclimPC
+currentPCdata<-netclimPC_g1
 
 #note, I could test for random pond effect using ranova function of lmerTest package
 #i can also use the performance package to quantify effect size as explained variance for random effect.
-#should I standardize all metrics first?
 
 
-#NOTE, CYCLE REALLY SHOULD NOT BE IN THE MODEL BC IT SUCKS UP ALL THE VARIANCE! BETTER TO HAVE SEPARATE ANALYSIS OF POND AND CYCLE
 #get variables to analyze
 variable.for.extanalysis<-c("Unique_Nodes","TotalEdges","Connectance","betweenness", "modularity", "mean_Distance", "skewEdge", "ave_Edge_weight","B", "meanDurAv", "freqStateAv", "skewDur", "event.rate", "time_memory")
 
@@ -509,7 +204,7 @@ currentPCdataS[variable.for.extanalysis] <- lapply(currentPCdata[variable.for.ex
 
 resPCA <- map_dfr(variable.for.extanalysis, function(response) {
   # Fit the mixed model for this response
-  model <- lmerTest::lmer(as.formula(paste(response,"~ PC1+PC2 + (1 | pond)")), data = currentPCdataS)
+  model <- lmerTest::lmer(as.formula(paste(response,"~ PC1+PC2 +(1 | pond)")), data = currentPCdataS)
   
   # Tidy model output: fixed effects only, with confidence intervals
   broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
@@ -543,27 +238,25 @@ sig_tablePCA %>%
 #order labels for plotting
 my_grouped_y_order <- c(
   #group 1: Network metrics
-  "Unique_Nodes",
-  "TotalEdges",
-  "Connectance",
-  "betweenness",
   "mean_Distance",
+  "betweenness",
   "modularity",
+  "Connectance",
+  "Unique_Nodes",
   #Group 2: Node metrics
+  "skewDur", 
   "meanDurAv",
   "freqStateAv",
-  "skewDur", 
   #Group 3: Edge metrics
-  "ave_Edge_weight",
   "skewEdge", 
+  "ave_Edge_weight",
+  "TotalEdges",
   # Group 4: temporal patterns
   "event.rate",
   "B",
-  "time_memory" 
-   
-)
+  "time_memory" )
 
-#make labels
+#make response variable labels
 variable_labels <- c(
   "Unique_Nodes" = "Unique nodes",
   "TotalEdges" = "Total edges",
@@ -580,6 +273,7 @@ variable_labels <- c(
   "event.rate" = "Event rate",
   "time_memory" = "Memory"
 )
+
 # Create alternating background - need to expand for all terms
 resPCA_prep <- resPCA %>%
   mutate(significant = p.value < 0.05)
@@ -626,18 +320,95 @@ coef.plotPCA <- resPCA_prep %>%
         axis.title = element_text(size = 18))
 
 coef.plotPCA 
-
 ```
+alternative plot version
+```{r}
+resPCA_prep <- resPCA %>%
+  mutate(significant = p.value < 0.05)
+
+# Add a category column to your data based on your grouping
+resPCA_prep <- resPCA_prep %>%
+  mutate(category = case_when(
+    response %in% c("Unique_Nodes",  "Connectance", 
+                    "betweenness", "mean_Distance", "modularity") ~ "Network",
+    response %in% c("meanDurAv", "freqStateAv", "skewDur") ~ "Node",
+    response %in% c("ave_Edge_weight","TotalEdges", "skewEdge") ~ "Edge",
+    response %in% c("event.rate", "B", "time_memory") ~ "Spacing",
+    TRUE ~ "Other"
+  )) %>%
+  # Set category order (top to bottom as they appear in your list)
+  mutate(category = factor(category, 
+                          levels = c("Network", "Node", "Edge", "Spacing"))) %>%
+  # Set response variable order within categories
+  mutate(response = factor(response, levels = my_grouped_y_order))
+
+
+# Create background shading by category (spans entire category height)
+background_data <- data.frame(
+  category = factor(c("Network", "Node", "Edge", "Spacing"),
+                   levels = c("Network", "Node", "Edge", "Spacing")),
+  fill_color = c("white", "grey95", "white", "grey95")
+) %>%
+  # Expand to include both terms
+  tidyr::crossing(term = unique(resPCA_prep$term))
+
+# Create the plot with faceting by category
+coef.plotPCA <- resPCA_prep %>%
+  ggplot(aes(x = estimate, y = response, color = term)) +
+  # Add background rectangles that span entire category
+  geom_rect(data = background_data,
+            aes(fill = fill_color),
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+            inherit.aes = FALSE, alpha = 1) + 
+  scale_fill_identity() +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray50", linewidth = 0.5) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
+                 height = 0.0, linewidth = 1) +
+  geom_point(aes(alpha = significant), size = 3) +
+  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide = "none") +
+  # Facet by both category (rows) and term (columns)
+  facet_grid(category ~ term, 
+             scales = "free_y",      # Free y-axis for each category
+             space = "free_y",       # Adjust panel height based on number of items
+             switch = "y",           # Put category labels on the left
+             labeller = labeller(
+               term = c("PC1" = "Weather PCA1", "PC2" = "Weather PCA2"),
+               category = label_value)) +
+  scale_y_discrete(
+    drop = TRUE,  # Drop unused factor levels in each facet
+    labels = variable_labels) +
+  labs(x = "Standardized coefficients and 95% CI", y = "") + 
+  scale_color_manual(
+    values = c("PC1" = "#33B8CC", "PC2" = "#CCAA33"), 
+    guide = "none") +
+  theme_pubr(base_size = 16) +
+  theme(
+    strip.background = element_blank(),  # Remove box around facet labels
+    strip.text.x = element_text(size = 18, face = "bold"),
+    strip.text.y.left = element_text(size = 16, face = "bold", angle = 90),  # Rotate category labels
+    strip.placement = "outside",
+    panel.spacing = unit(0.3, "lines"),      # Space between categories
+    panel.border = element_blank(),  # Remove boxes around panels
+    axis.text.x = element_text(size = 14), 
+    axis.text.y = element_text(size = 16), 
+    axis.title = element_text(size = 18)
+  )
+
+coef.plotPCA
+ggsave(here("Figures","PCAWeather.effect.png"),plot=coef.plotPCA,dpi=600,width = 30, height = 15, units = "cm")
+```
+
+
 
 # Extreme climate
 Let's look at differences in community structure metrics between extreme years and normal years.
-
-```{r}
+```{r extremeClimateAnalysis}
 #get raw climate data
 sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat), extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot))%>%select(-burstinessRain)
 
+netclimCur<-netclim #can be netclim, netclime_g1, _g2, _g3 based on gap
 #join data
-netclimR<-left_join(netclim,sumclima.raw, by=c("cycle"))
+netclimR<-left_join(netclimCur,sumclima.raw, by=c("cycle"))
 
 
 netclimR[variable.for.extanalysis] <- lapply(netclimR[variable.for.extanalysis], scale)
@@ -714,4 +485,82 @@ coef.plot <- res_prep %>%
         axis.title = element_text(size = 18))
 
 coef.plot
+```
+```{r}
+# Add a category column to your data based on your grouping
+res_prepE <- res %>%
+   mutate(significant = p.value < 0.05)%>%
+   mutate(category = case_when(
+    response %in% c("Unique_Nodes", "Connectance", 
+                    "betweenness", "mean_Distance", "modularity") ~ "Network",
+    response %in% c("meanDurAv", "freqStateAv", "skewDur") ~ "Node",
+    response %in% c("ave_Edge_weight",  "TotalEdges","skewEdge") ~ "Edge",
+    response %in% c("event.rate", "B", "time_memory") ~ "Spacing",
+    TRUE ~ "Other"
+  )) %>%
+  # Set category order (top to bottom as they appear in your list)
+  mutate(category = factor(category, 
+                          levels = c("Network", "Node", "Edge", "Spacing"))) %>%
+  # Set response variable order within categories
+  mutate(response = factor(response, levels = my_grouped_y_order))
+
+
+# Create background shading by category (spans entire category height)
+background_data <- data.frame(
+  category = factor(c("Network", "Node", "Edge", "Spacing"),
+                   levels = c("Network", "Node", "Edge", "Spacing")),
+  fill_color = c("white", "grey95", "white", "grey95")
+) %>%
+  # Expand to include both terms
+  tidyr::crossing(term = unique(res_prepE$term))
+library(ggtext)
+# Create the plot with faceting by category
+coef.plotE <- res_prepE %>%
+  ggplot(aes(x = estimate, y = response, color = term)) +
+  # Add background rectangles that span entire category
+  geom_rect(data = background_data,
+            aes(fill = fill_color),
+            xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
+            inherit.aes = FALSE, alpha = 1) + 
+  scale_fill_identity() +
+  geom_vline(xintercept = 0, linetype = "solid", color = "gray50", linewidth = 0.5) +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
+                 height = 0.0, linewidth = 1) +
+  geom_point(aes(alpha = significant), size = 3) +
+  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide = "none") +
+  # Facet by both category (rows) and term (columns)
+  facet_grid(category ~ term, 
+             scales = "free_y", 
+             space = "free_y", 
+             switch = "y", 
+             labeller=labeller(term = c(
+               "extDryTYes" = "Extreme Dry",
+               "extHotYes" = "Extreme Hot"),
+               category = label_value)) +
+   scale_y_discrete(
+    drop = TRUE,  # Drop unused factor levels in each facet
+    labels = variable_labels) +
+  labs(x = "Standardized coefficients and 95% CI", y = "") + 
+  scale_color_manual(
+    values = c("extDryTYes" = "#A65F32", 
+               "extHotYes" = "#CC3333"), 
+    guide = "none") +
+  theme_pubr(base_size = 16) +
+ theme(
+    strip.background = element_blank(),
+    # Modify strip.text.x to underline column (term) labels
+    strip.text.x = element_text(size = 18, face = "bold"),
+    # Modify strip.text.y.left to underline row (category) labels
+    strip.text.y.left = element_text(size = 16, face = "bold", angle = 90), 
+    strip.placement = "outside",
+    panel.spacing = unit(0.3, "lines"),
+    panel.border = element_blank(),
+    axis.text.x = element_text(size = 14), 
+    axis.text.y = element_text(size = 16), 
+    axis.title = element_text(size = 18)
+  )
+
+coef.plotE
+ggsave(here("Figures","ExtremeClim.effect.png"),plot=coef.plotE,dpi=600,width = 30, height = 15, units = "cm")
+
 ```
