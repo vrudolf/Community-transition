@@ -26,7 +26,9 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "ggcorrplot",
           "broom",
           "moments",
-          "car"
+          "car",
+          "ggbeeswarm",
+          "lme4"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -319,7 +321,15 @@ Now that we have state transition networks, we can analyze the structure in vari
 ## Community states
 First, we look at community states,unique states, the average duration of a given state, and their frequency.
 ```{r state_stats, warning=FALSE}
-
+#average number of species per community state
+ggplot(subset(community_states, n_species!=0),
+       aes(x=n_species, fill=as.factor(cycle)))+
+  geom_histogram()+
+  facet_wrap(~pond)+
+  scale_x_continuous(breaks = seq(0, 14, by = 1))+
+  labs(x="Species per state", y="Frequency")+
+  theme_bw()
+  
 #look at average and standard deviation of duration of individual states, how often a state occurs, and we do this for the raw data sets or those that  ignore short activity gaps (g1-g3)
 
 #calculate mean duration of state in a given pond year
@@ -377,7 +387,6 @@ com_state_Network_g3<-com_state_Ave_g3%>%
             freqStateAv=mean(freqState),
             skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
             )
-
 
 # compare frequency to exponential distribution
 lambda_df <- community_states %>%
@@ -1113,9 +1122,10 @@ write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g
 
 #lets plot all response variables by pond and year
 ```{r}
+Transition_metrics<-readRDS(here("./output/frog_transition_matrix_metrics.rds"))
+
 library(patchwork)
-library(ggdist)
-library(gghalves)
+library(beeswarm)
 response_list <- c(
   #"No_Spec"="No. Species",
   "Unique_Nodes" = "Unique nodes",
@@ -1162,9 +1172,55 @@ combined_pondY_plot<-wrap_plots(plot_list)+
   )
 print(combined_pondY_plot)
 
+ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
+  geom_point()+  
+  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+    labs(x="No. Species", y="Unique Nodes")+
+  stat_smooth(method=lm, formula=y~poly(x,2))+
+  stat_function(fun = function(x) 2^x - 1, color = "red", size = 1)+
+  scale_y_log10() +
+    theme_bw()
+
+ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
+  geom_point()+  
+  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+    labs(x="No. Species", y="Unique Nodes")+
+  stat_smooth(method=lm, formula=y~poly(x,2))+
+    theme_bw()
+
+#plot number of transitions
+ggplot(Transition_metrics, aes(x=TotalEdges))+
+  geom_histogram()+
+  facet_wrap(~pond,nrow=2)+
+  theme_bw()
+
+specUniqN<-lmer(log(Unique_Nodes)~No_Spec*pond +(1|cycle), data=Transition_metrics)
+Anova(specUniqN)
   
 ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
 ```
+##Metric averages
+Let's get averages across pond and time to desribe general patterns
+```{r}
+
+#  SE function 
+se <- function(x, na.rm = FALSE) {
+  if (na.rm) x <- x[!is.na(x)]
+  sd(x) / sqrt(length(x))
+}
+
+# Now run the summary
+summary_table <- Transition_metrics %>%
+  select(-pond, -cycle, -Pond_Cycle) %>% 
+  summarise(across(everything(), list(mean = mean, se = se), na.rm = TRUE)) %>%
+  pivot_longer(everything(), 
+               names_to = c("metric", ".value"), 
+               names_pattern = "(.*)_(mean|se)")
+
+print(summary_table)
+```
+
+
 ## test for pond and cycle differences
 Here we simply want to test if there are significant differences among ponds and within ponds across years. In the later analyses on climate, we will include pond as random effect and cycle will be instead represented by the respective annual climate data. 
 ```{r}
