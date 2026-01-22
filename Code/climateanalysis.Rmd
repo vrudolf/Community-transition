@@ -162,14 +162,6 @@ netPCAclim<-full_join(sumclima,metricPCA)%>%select(pond, cycle, everything())
 netPCAclim_g1<-full_join(sumclima, metricPCA_g1)%>%select(pond, cycle, everything())
 netPCAclim_g3<-full_join(sumclima, metricPCA_g3)%>%select(pond, cycle, everything())
 
-
-
-ggplot(netclim, aes(x=event.rate, y=meanMaxT))+geom_point()+theme_bw()+geom_smooth(se=F)
-ggplot(netclim, aes(x=event.rate, y=meanMinT))+geom_point()+theme_bw()+geom_smooth(se=F)
-ggplot(netclim, aes(x=event.rate, y=meanPrec))+geom_point()+theme_bw()+geom_smooth(se=F)
-ggplot(netclim, aes(x=event.rate, y=burstinessRain))+geom_point()+theme_bw()+geom_smooth(se=F)
-
-
 ```
 So two PCA are enough to explain a lot of variation in all these variables, and the first explains by far the most. It's also interesting that the correlation between variables are largely robust and don't change a lot if we ignore small 1, - 3 day gaps in calling. 
 Based on these relationship, we definitely can drop unique nodes since it's almost perfectly correlated with uniqueEdges, and uniqueEdges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need  mean_t and st_t which are part of memory and burstiness. Connectance and Weighted_connectance are also highly correlated, and weighted_betweenness is also almost perfectly correlated with  harmonic centrality, so let's drop that one.
@@ -234,94 +226,6 @@ sig_tablePCA %>%
 ```
 
 ##PCA analysis effect size plot
-```{r}
-#order labels for plotting
-my_grouped_y_order <- c(
-  #group 1: Network metrics
-  "mean_Distance",
-  "betweenness",
-  "modularity",
-  "Connectance",
-  "Unique_Nodes",
-  #Group 2: Node metrics
-  "skewDur", 
-  "meanDurAv",
-  "freqStateAv",
-  #Group 3: Edge metrics
-  "skewEdge", 
-  "ave_Edge_weight",
-  "TotalEdges",
-  # Group 4: temporal patterns
-  "event.rate",
-  "B",
-  "time_memory" )
-
-#make response variable labels
-variable_labels <- c(
-  "Unique_Nodes" = "Unique nodes",
-  "TotalEdges" = "Total edges",
-  "Connectance" = "Connectance",
-  "betweenness" = "Betweenness",
-  "modularity" = "Modularity",
-  "mean_Distance" = "Mean distance",
-  "skewEdge" = "Skewness edge freq",
-  "ave_Edge_weight"="Edge frequency",
-  "B" = "Burstiness",
-  "meanDurAv" = "Node duration",
-  "freqStateAv" = "Node frequency",
-  "skewDur" = "Duration skewness",
-  "event.rate" = "Event rate",
-  "time_memory" = "Memory"
-)
-
-# Create alternating background - need to expand for all terms
-resPCA_prep <- resPCA %>%
-  mutate(significant = p.value < 0.05)
-
-background_data <- resPCA_prep %>%
-  distinct(response, term) %>%
-  mutate(row_num = as.numeric(factor(response, 
-                                     levels =my_grouped_y_order)))%>%
-  mutate(fill_color = ifelse(row_num %% 2 == 0, "grey95", "white"))
-
-
-# Create a coefficient plot faceted by predictor
-
-coef.plotPCA <- resPCA_prep %>%
-  ggplot(aes(x = estimate, y = response, color = term)) +
-  geom_tile(data = background_data,
-            aes(y = response, x = 0, height = 1, width = Inf, fill = fill_color), 
-            color = NA,
-            inherit.aes = FALSE) + 
-  scale_fill_identity() +
-  geom_vline(xintercept = 0, linetype = "solid", color = "gray50", linewidth=0.5) +
-  geom_hline(yintercept = c(3.5, 5.5, 8.5), color = "black", linetype = "dashed", linewidth = 0.8) +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
-                 height = 0.0, linewidth = 1) +
-  geom_point(aes(alpha = significant), size = 3) +
-  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide="none") +
-  facet_wrap(~ term, ncol = 2, 
-             labeller=labeller(term = c(
-               "PC1" = "Weather PCA1",
-               "PC2" = "Weather PCA2"))) +
-  scale_y_discrete(
-    limits = rev(my_grouped_y_order),
-    labels = rev(variable_labels)) +
-  labs(x = "Standardized coefficients and 95% CI", y = "") + 
-  scale_color_manual(
-    values = c("PC1" = "#33B8CC", 
-               "PC2" = "#CCAA33"), guide="none")+
-  theme_pubr(base_size = 16) +
-  theme(strip.background = element_blank(),
-        strip.text = element_text(size = 18, face = "bold"),
-        panel.spacing = unit(1, "lines"), 
-        axis.text.x = element_text(size = 14), 
-        axis.text.y = element_text(size = 16), 
-        axis.title = element_text(size = 18))
-
-coef.plotPCA 
-```
-alternative plot version
 ```{r}
 resPCA_prep <- resPCA %>%
   mutate(significant = p.value < 0.05)
@@ -425,67 +329,10 @@ res <- map_dfr(variable.for.extanalysis, function(response) {
   }
   )
 
-
-# visualize some plots with raw data
-ggplot(netclimR,aes(x=pond,y=Connectance,color=extHot))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
-
-ggplot(netclimR,aes(x=pond,y=B,color=extDryT))+
-  geom_point(position=position_dodge(width=0.5))+stat_summary(fun.data=mean_se, position=position_dodge(width=0.5))+theme_bw()
-
 ```
 
 Plot effect sizes of extreme drought and temperature
-```{r}
 
-res_prep <- res %>%
-  mutate(significant = p.value < 0.05)%>%
-  mutate(response = factor(response, levels = my_grouped_y_order)) %>%
-  arrange(response)
-
-# Create alternating background
-background_data <- res_prep %>%
-  filter(term != "(Intercept)") %>%
-  distinct(response, term) %>%
-  mutate(row_num = as.numeric(factor(response, 
-                                     levels =  my_grouped_y_order))) %>%
-  mutate(fill_color = ifelse(row_num %% 2 == 0, "grey95", "white"))
-
-# Create a coefficient plot faceted by predictor
-coef.plot <- res_prep %>%
-  ggplot(aes(x = estimate, y = response, color = term)) +
-  geom_tile(data = background_data,
-            aes(y = response, x = 0, height = 1, width = Inf, fill = fill_color), 
-            color = NA,
-            inherit.aes = FALSE) + 
-  scale_fill_identity() +
-  geom_vline(xintercept = 0, linetype = "solid", color = "gray50", linewidth=0.8) +
-  geom_hline(yintercept = c(3.5, 5.5, 8.5), color = "black", linetype = "dashed", linewidth = 0.8) +
-  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high, alpha = significant), 
-                 height = 0.0, linewidth = 1) +
-  geom_point(aes(alpha = significant), size = 3) +
-  scale_alpha_manual(values = c("FALSE" = 0.3, "TRUE" = 1), guide="none") +
-  facet_wrap(~ term, ncol = 2, 
-             labeller=labeller(term = c(
-               "extDryTYes" = "Extreme Dry",
-               "extHotYes" = "Extreme Hot"))) +
-  scale_y_discrete(
-    limits = rev(my_grouped_y_order),
-    labels = rev(variable_labels)) +
-  labs(x = "Standardized coefficients and 95% CI", y = "") + 
-  scale_color_manual(
-    values = c("extDryTYes" = "#A65F32", 
-               "extHotYes" = "#CC3333"), guide="none")+
-  theme_pubr(base_size = 16) +
-  theme(strip.background = element_blank(),
-        strip.text = element_text(size = 18, face = "bold"),
-        panel.spacing = unit(1, "lines"), 
-        axis.text.x = element_text(size = 14), 
-        axis.text.y = element_text(size = 16), 
-        axis.title = element_text(size = 18))
-
-coef.plot
-```
 ```{r}
 # Add a category column to your data based on your grouping
 res_prepE <- res %>%

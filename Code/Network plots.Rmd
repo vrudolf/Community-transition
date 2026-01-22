@@ -210,8 +210,19 @@ ggsave(here("Figures","network_plot.png"),plot=network_plot,dpi=600,width = 12, 
 Now let's to this for all years for a specific pond
 ```{r}
 # Function to create network plot for a given pond and cycle
+# Get all cycles for pond x
+focalpond<-4
+
+#get max duration to scale sizes in plots consistently
+max_dur <- community_transitions %>%
+  subset(pond==focalpond)%>% #if we want to only plot a susbet of ponds
+  group_by(pond, cycle, starting_state) %>%
+  summarize(avg_duration = mean(c(diff(day), 1)), .groups = 'drop') %>%
+  pull(avg_duration) %>%
+  max(na.rm = TRUE)
+
 plot_network <- function(pond_num, cycle_num) {
-  # Calculate state durations
+  # Calculate state duration
   state_durations <- community_transitions %>%
     subset(pond == pond_num & cycle == cycle_num) %>%
     arrange(day) %>%
@@ -236,33 +247,34 @@ plot_network <- function(pond_num, cycle_num) {
       test.network, center = which.max(degree(test.network))[[1]]
   )) +
       geom_edge_fan(
-        aes(color = day),
-          arrow = arrow(length = unit(0.15, "inches"), type = "closed"),
+        aes(edge_colour = day),
+          arrow = arrow(length = unit(0.15, "inches"), type = "open"),
           end_cap = circle(0.25, "inches"),
           strength = 1.8,
           spread = 3,
           width = 1.2,
           alpha = 0.6
       ) +
+          #geom_node_text(aes(label = name), size = 2.5, repel = TRUE) +
+      scale_edge_color_gradient(
+          low = "#2C3E50",
+          high = "#A8E6CF",
+          name = "Day",
+          limits=c(1,365)
+          ) +
       geom_node_point(aes(size = avg_duration), 
                       fill = "#5B2C6F",
                       color = "white",
                       stroke = 1,
                       shape = 21) +
-      geom_node_text(aes(label = name), size = 2.5, repel = TRUE) +
-      scale_edge_color_gradient(
-          low = "#2C3E50",
-          high = "#A8E6CF",
-          name = "Day"
-      ) +
-      scale_size_continuous(range = c(3, 10), name = "Avg Duration") +
+      scale_size_continuous(
+        range = c(3, 10), 
+        name = "Avg Duration",
+        limits=c(1,max_dur)) +
       theme_void() + 
-    theme(legend.position = "none")+
       labs(title = paste("Cycle", cycle_num))
 }
 
-# Get all cycles for pond x
-focalpond<-4
 
 cycles_pond1 <- community_transitions %>%
   filter(pond == focalpond) %>%
@@ -276,15 +288,26 @@ plot_list <- lapply(cycles_pond1, function(c) plot_network(focalpond, c))
 # Combine using patchwork
 library(patchwork)
 wrap_plots(plot_list, ncol = 5)  # Adjust ncol as needed
-#plot a subset
-wrap_plots(plot_list[c(11, 12, 23,4, 7, 17)], ncol = 3)  # this plots 4 extreme hot and normal  years
-wrap_plots(plot_list[c(5, 10, 11, 4, 7, 15)], ncol = 3)  # this plots 4 dry  and normal years
 
-wrap_plots(plot_list[c(4,5,6, 9,10, 12, 21,22,24)], ncol = 3)  # this plots 4 dry  and normal years
+#plot a  subset 3 dry years (top row) vs 3 normal years
 
-wrap_plots(plot_list[c(5,6,22,1 ,16,24)], ncol = 3)  
+extY_comp_plot<-wrap_plots(plot_list[c(6,11,22,1 ,16,24)], ncol = 3)+
+  plot_layout(guide="collect")&
+  theme(legend.position="right",
+        legend.box.just="right",
+        legend.justification="right")
+#save all six plots
+ggsave(here("Figures","extremeY_comp_network_plot.png"),plot=extY_comp_plot,dpi=600,width = 12, height = 8, units = "in")
 
-wrap_plots(plot_list[c(1,6)], ncol = 2)  
+#plot each individually
+P1Y1<-wrap_plots(plot_list[c(1)])
+P1Y6<-wrap_plots(plot_list[c(6)])
+P1Y11<-wrap_plots(plot_list[c(11)])
+P1Y16<-wrap_plots(plot_list[c(16)])
+P1Y22<-wrap_plots(plot_list[c(22)])
+P1Y24<-wrap_plots(plot_list[c(24)])
+
+ggsave(here("Figures","network_plot_p1y1.png"),plot=P1Y1,dpi=600,width = 6, height = 4, units = "in")
 
 
 ```

@@ -685,23 +685,6 @@ community_networks_weighted_g1<- weighted_networks(trans_markov_matrix_g1)
 community_networks_weighted_g2<- weighted_networks(trans_markov_matrix_g2)
 community_networks_weighted_g3<- weighted_networks(trans_markov_matrix_g3)
 
-#Let's see how this looks like
-plot(community_networks_weighted[["pond_1_cycle_2"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_2"]])$weight*0.5,main = "Pond 1 Cycle 2 Network")
-plot(community_networks_weighted[["pond_1_cycle_11"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_11"]])$weight*0.5, main = "Pond 1 Cycle 11 Network")
-plot(community_networks_weighted[["pond_1_cycle_22"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_1_cycle_22"]])$weight*0.5, main = "Pond 1 Cycle 22 Network")
-
-
-plot(community_networks_weighted[["pond_3_cycle_7"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_3_cycle_7"]])$weight*0.5,main = "Pond 3 Cycle 7 Network")
-plot(community_networks_weighted[["pond_3_cycle_11"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_3_cycle_11"]])$weight*0.5,main = "Pond 3 Cycle 11 Network")
-
-
-plot(community_networks_weighted[["pond_6_cycle_7"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_6_cycle_7"]])$weight*0.5,main = "Pond 6 Cycle 7 Network")
-plot(community_networks_weighted[["pond_6_cycle_11"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_6_cycle_11"]])$weight*0.5,main = "Pond 6 Cycle 11 Network")
-
-plot(community_networks_weighted[["pond_5_cycle_7"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_5_cycle_7"]])$weight*0.5,main = "Pond 5 Cycle 7 Network")
-plot(community_networks_weighted[["pond_5_cycle_11"]], layout=layout.circle, edge.width = E(community_networks_weighted[["pond_5_cycle_11"]])$weight*0.5,main = "Pond 5 Cycle 11 Network")
-
-
 #save data
 write_rds(community_networks_weighted,file=here("./output/frog_community_networks_weighted.rds"))
 write_rds(community_networks_weighted_g1,file=here("./output/frog_community_networks_weighted_g1.rds"))
@@ -739,22 +722,6 @@ Trans_evenness_g1 <- calc_skew(trans_freq_g1)%>%select(pond, cycle,skewEdge,ave_
 Trans_evenness_g2 <- calc_skew(trans_freq_g2)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
 Trans_evenness_g3 <- calc_skew(trans_freq_g3)%>%select(pond, cycle,skewEdge,ave_Edge_weight)
 
-
-ggplot(Trans_evenness, aes(x=pond, y=skewEdge, color=cycle))+
-  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
-   theme_bw()+
-  labs(x="Pond cummunity", y="Edge skewness")
-
-ggplot(Trans_evenness, aes(x=pond, y=ave_Edge_weight, color=cycle))+
-  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
-  geom_beeswarm(cex=1.5, priority="density", alpha=0.6)+
-   theme_bw()+
-  labs(x="Pond cummunity", y="Average Edge weight")
-
-
-skewtest<-lm(skewEdge~pond*cycle, data=Trans_evenness)
-Anova(skewtest)
 ```
 
 ##Network metrics
@@ -904,20 +871,6 @@ burstiness_results_g1<-calculate_burstiness(community_states_g1)
 burstiness_results_g2<-calculate_burstiness(community_states_g2)
 burstiness_results_g3<-calculate_burstiness(community_states_g3)
 
-#let's look at it
-ggplot(burstiness_results, aes(x=pond,y=B, color=cycle))+
-  stat_summary(fun.data=mean_se, size=1.5)+
-  geom_point(alpha=0.5)+
-  labs(x="Pond", y="Burstiness, B")+
-  theme_bw()
-
-ggplot(burstiness_results, aes(x=cycle,y=B, color=pond, group=as.factor(pond)))+
-  geom_point(alpha=0.5)+
-  stat_smooth(se=F)+
-  labs(x="Cycle", y="Burstiness, B")+
-  theme_bw()
-
-
 #let's check if including the empty state or ignoring gaps alters general patterns (it doesn't, just shifts curves down a bit)
 ggplot(burstiness_results, aes(x=cycle,y=B, color=as.factor(pond)))+
   stat_smooth(data=burstiness_results, aes(x=cycle,y=B, color=as.factor(pond)), linetype=1, se=F)+
@@ -929,18 +882,6 @@ ggplot(burstiness_results, aes(x=cycle,y=B, color=as.factor(pond)))+
   facet_wrap(~pond)+
   theme_bw()
 
-#lets see if burstiness is correlated over time across ponds
-library(ggcorrplot)
-wide_data <- burstiness_results %>%select(pond,B,cycle)%>%
-  pivot_wider(names_from = pond, values_from = B)%>%
-  arrange(cycle)%>%select(-cycle)
-p.mat<-cor_pmat(wide_data)
-cor.mat<-cor(wide_data)
-ggcorrplot(cor.mat,type="lower",
-           outline.color="white",
-           ggtheme=ggplot2::theme_classic,colors = c("#6D9EC1", "white", "#E46726"),
-           lab=T,
-           p.mat=p.mat)
 ```
 
 ## Memory
@@ -1072,10 +1013,6 @@ memory_results_g1 <- memory_analysis(community_states_g1)
 memory_results_g2 <- memory_analysis(community_states_g2)
 memory_results_g3 <- memory_analysis(community_states_g3)
 
-ggplot(memory_results, aes(x=pond, y=time_memory, color=cycle))+
-  stat_summary(fun.data=mean_se, size=1.5, alpha=0.5)+
-  geom_point()+
-  theme_bw()
 
 ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
   geom_point()+
@@ -1172,15 +1109,29 @@ combined_pondY_plot<-wrap_plots(plot_list)+
   )
 print(combined_pondY_plot)
 
-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
-  geom_point()+  
-  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
-    labs(x="No. Species", y="Unique Nodes")+
-  stat_smooth(method=lm, formula=y~poly(x,2))+
-  stat_function(fun = function(x) 2^x - 1, color = "red", size = 1)+
-  scale_y_log10() +
-    theme_bw()
+ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
 
+
+#look at unique node vs species with predicted expectation
+nodvsspecDiv_plot<-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
+  geom_beeswarm(size=3, alpha=0.6, color="#1b7837")+
+  labs(x="No. Species", y="Unique Nodes")+
+  stat_smooth(method=lm, formula=y~poly(x,2),
+              color="#1b7837",
+              fill="#1b7837", 
+              alpha=0.2, 
+              size=2)+
+  stat_function(fun = function(x) 2^x - 1, color = "#762a83", size = 2)+
+  scale_y_log10() +
+  scale_x_continuous(breaks = seq(1, max(Transition_metrics$No_Spec, na.rm = TRUE), by = 1)) +
+  theme_classic()+
+  theme(axis.text = element_text(size = 10),
+    axis.title = element_text(size = 16))
+
+ggsave(here("Figures","NodevsSpecDiv.png"),plot=nodvsspecDiv_plot,dpi=600,width = 8, height = 6, units = "in")
+
+
+#
 ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
   geom_point()+  
   scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
@@ -1197,8 +1148,11 @@ ggplot(Transition_metrics, aes(x=TotalEdges))+
 specUniqN<-lmer(log(Unique_Nodes)~No_Spec*pond +(1|cycle), data=Transition_metrics)
 Anova(specUniqN)
   
+
 ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
+
 ```
+
 ##Metric averages
 Let's get averages across pond and time to desribe general patterns
 ```{r}
@@ -1255,13 +1209,13 @@ library(mgcv)
 res_gam_interaction <- map_dfr(variable.for.extanalysis, function(response) {
   
   # 1. Fit the Reduced Model (Common trend for all ponds)
-  form_red <- as.formula(paste(response, "~ pond + s(cycle, k = 4)"))
+  form_red <- as.formula(paste(response, "~ pond + No_Spec+s(cycle, k = 4)"))
   mod_red <- gam(form_red, data = Transition_metrics, method = "ML") # Use ML for comparison
   
   # 2. Fit the Full Model (Different trends per pond)
   # We use the 'fs' (factor smooth) basis because it provides a single p-value 
   # for the 'difference' between levels in an ANOVA-like way
-  form_full <- as.formula(paste(response, "~ pond + s(cycle, k = 4) + s(cycle, pond, bs = 'fs', k = 4)"))
+  form_full <- as.formula(paste(response, "~ pond +No_Spec+ s(cycle, k = 4) + s(cycle, pond, bs = 'fs', k = 4)"))
   mod_full <- gam(form_full, data = Transition_metrics, method = "ML")
   
   # 3. Get the ANOVA/Summary info for the Full Model
