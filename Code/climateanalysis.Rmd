@@ -34,7 +34,8 @@ We will examine how climate variables are linked to different aspects of communi
           "ggpubr",
           "broom.mixed",
           "lmerTest",
-          "rlang"
+          "rlang",
+          "ggrepel"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -105,7 +106,6 @@ ggplot(metrics, aes(y=log(Unique_Nodes), x=No_Spec))+geom_point()+stat_smooth(me
 
 ```
 So whether we ignore small gaps has  no effect on correlation between metrics even though metrics differ between those choices. 
-
 We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. Unique nodes and unique edges are also almost perfectly correlated, but we'll keep it for now since that's interesting.
 
 Let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship
@@ -118,6 +118,10 @@ print(metricpca)
 metricpca_g1<-metrics_g1 %>%select(-meanDayOnset)%>% prcomp(scale = TRUE)
 metricpca_g3<- metrics_g3%>% select(-meanDayOnset)%>%prcomp( scale = TRUE)
 
+#get corresponding ponds and year
+pca_data <- as.data.frame(metricpca$x)
+pca_data$cycle<-state_connectance_metrics$cycle
+pca_data$pond<-state_connectance_metrics$pond
 
 #plot PC %explanation which is almost identical for all three data sets.
 #fviz_eig(metricpca, col.var="blue")
@@ -308,9 +312,11 @@ ggsave(here("Figures","PCAWeather.effect.png"),plot=coef.plotPCA,dpi=600,width =
 Let's look at differences in community structure metrics between extreme years and normal years.
 ```{r extremeClimateAnalysis}
 #get raw climate data
-sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat), extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot))%>%select(-burstinessRain)
+sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%
+  mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat), extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot))%>%
+  select(-burstinessRain)
 
-netclimCur<-netclim #can be netclim, netclime_g1, _g2, _g3 based on gap
+netclimCur<-netclim #can be netclim, netclime_g1, _g2, _g3 based on gap data set
 #join data
 netclimR<-left_join(netclimCur,sumclima.raw, by=c("cycle"))
 
@@ -332,10 +338,10 @@ res <- map_dfr(variable.for.extanalysis, function(response) {
 ```
 
 Plot effect sizes of extreme drought and temperature
-
 ```{r}
 # Add a category column to your data based on your grouping
 res_prepE <- res %>%
+  filter(!response %in% c("No_Spec")) %>%  # Explicitly drop species richness
    mutate(significant = p.value < 0.05)%>%
    mutate(category = case_when(
     response %in% c("Unique_Nodes", "Connectance", 

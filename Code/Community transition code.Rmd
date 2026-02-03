@@ -388,13 +388,23 @@ com_state_Network_g3<-com_state_Ave_g3%>%
             skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
             )
 
-# compare frequency to exponential distribution
+# compare frequency to exponential distribution most of the observations are below 70 days, with some extreme outliers
 lambda_df <- community_states %>%
-  group_by(pond, cycle) %>%
+  subset(duration<70) %>%
   summarise(
     lambda = 1 / mean(duration),
     .groups = "drop"
   )
+#or by pond
+lambda_df <- community_states %>%
+  subset(duration<70) %>%
+  group_by(pond) %>%
+  summarise(
+    lambda = 1 / mean(duration),
+    .groups = "drop"
+  )
+
+
 
 # Choose a max x-value (duration range)
 max_duration <- max(community_states$duration)
@@ -403,20 +413,35 @@ max_duration <- max(community_states$duration)
 exp_curve <- lambda_df %>%
   mutate(data = map(lambda, ~ {
     tibble(
-      duration = seq(0, max_duration, by = 0.1),
-      density = dexp(seq(0, max_duration, by = 0.1), rate = .x)
+      # Using 0.2 or 0.5 instead of 0.1 prevents the 'vertical bar' aliasing
+      duration = seq(0, 60, by = 0.5), 
+      density = dexp(seq(0, 60, by = 0.5), rate = .x)
     )
   })) %>%
   unnest(data)
-
 #plot data with exponential distribution for comparison
-ggplot() +
-  geom_line(data = exp_curve, aes(x = duration, y = density),
-            color = "darkgreen", size = 1.2, alpha=0.5) +
-  geom_histogram(data = community_states, aes(x = duration, y = ..density..),
-                 binwidth = 1, fill = "black") +
-  facet_grid(~pond, scales = "free_y") +
-  theme_bw()
+Duration_probD_plot<-ggplot() +
+  geom_area(data = exp_curve, aes(x = duration, y = density),
+            fill = "#D55E00", alpha = 0.3) +
+  geom_histogram(data = community_states, 
+                 aes(x = duration, y = ..density..),
+                 binwidth = 1, fill = "#2c3e50", alpha=0.8) +
+  geom_path(data = exp_curve, aes(x = duration, y = density),
+            color = "#D55E00", linewidth = 1) +
+  #stat_function(fun = dexp, args = list(rate = 0.8), 
+  #              geom = "area", fill = "#D55E00", alpha = 0.2)+
+  #stat_function(fun = dexp, args = list(rate = 0.8), 
+  #              color = "#D55E00", linewidth = 1) +
+  facet_wrap(~pond,  nrow=2) +
+  labs(x="Node duration (days)", y="Porbability density")+
+  theme_classic()+
+  theme(strip.background = element_rect(fill = "white"), 
+    strip.text = element_text(face = "bold"),
+    panel.grid.minor = element_blank(), 
+    axis.title = element_text(size = 12))+
+  coord_cartesian(xlim = c(0, 60))
+
+ggsave(here("Figures","Durationprop.png"),plot=Duration_probD_plot,dpi=300,width = 8, height = 8, units = "in")
 
 ```
 
@@ -610,15 +635,6 @@ eventvstime_regression_g3 <- daily_cumulative_onsets_g3 %>%
     p_value = p.value
   )
 
-#let's test if this rate differs across ponds and cycles
-meanER<-lm(event.rate~pond+as.factor(cycle), data=eventvstime_regression)
-Anova(meanER)
-
-ggplot(eventvstime_regression, aes(x=pond, y=event.rate, color=cycle))+
-  geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
-
-ggplot(eventvstime_regression_g1, aes(x=pond, y=event.rate, color=cycle))+
-  geom_point()+stat_summary(fun.data=mean_se)+theme_bw()
 
 #save the estimate and add it to the response variable list
 eventvs.time<-eventvstime_regression%>%select(pond, cycle,event.rate)
@@ -923,10 +939,10 @@ calculate_memory <- function(data, pond_val, cycle_val) {
   })
   
   # Calculate memory metrics
-  # 1. Markov memory: How well previous state predicts current state
+  # Markov memory: How well previous state predicts current state
   state_repeats <- sum(data$state == data$prev_state, na.rm = TRUE) / max(1, (nrow(data) - 1))
   
-  # 2. Time memory: Correlation between consecutive durations
+  # Time memory: Correlation between consecutive durations
   time_memory <- tryCatch({
     if(nrow(data) > 1 && sd(data$duration, na.rm = TRUE) > 0) {
       durations1 <- data$duration[-length(data$duration)]
@@ -943,7 +959,7 @@ calculate_memory <- function(data, pond_val, cycle_val) {
     NA_real_
   })
   
-  # 4. Mean return time (how long until a state recurs)
+  # Mean return time (how long until a state recurs)
   return_times_df <- tryCatch({
     data %>%
       group_by(state) %>%
@@ -1014,6 +1030,7 @@ memory_results_g2 <- memory_analysis(community_states_g2)
 memory_results_g3 <- memory_analysis(community_states_g3)
 
 
+#compare memory across data sets using different gap cutoffs
 ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
   geom_point()+
   geom_line(se=F)+
@@ -1023,12 +1040,6 @@ ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
   theme_bw()+
   facet_wrap(~pond)
 
-#test for differences
-modelM<-lm(time_memory~(cycle)*pond, data=memory_results)
-library(car)
-Anova(modelM)
-#so differences in memory across ponds, but no consistent temporal effect. Higher order polynomials didn't change that
-#no time effect
 ```
 
 Lets combine both with all the other network metrics into one data file
@@ -1061,10 +1072,13 @@ write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g
 ```{r}
 Transition_metrics<-readRDS(here("./output/frog_transition_matrix_metrics.rds"))
 
+library(tidyverse)
+library(ggbeeswarm)
 library(patchwork)
-library(beeswarm)
+library(here)
+
+# 1. Define your standard response list outside the function
 response_list <- c(
-  #"No_Spec"="No. Species",
   "Unique_Nodes" = "Unique nodes",
   "Connectance" = "Connectance",
   "betweenness" = "Betweenness",
@@ -1074,53 +1088,72 @@ response_list <- c(
   "meanDurAv" = "Node duration",
   "skewDur" = "Duration skewness",
   "TotalEdges" = "Total edges",
-  "ave_Edge_weight"="Edge frequency",
+  "ave_Edge_weight" = "Edge frequency",
   "skewEdge" = "Skewness edge freq",
   "event.rate" = "Event rate",
   "B" = "Burstiness",
   "time_memory" = "Memory"
 )
 
-make_time_pond_plot<-function(var_index){
-  col_name <- names(response_list)[var_index] 
-  label_name <- response_list[var_index]
-  ggplot(Transition_metrics, aes(x=pond, y=.data[[col_name]], color=cycle))+
-    geom_beeswarm(side=-1L,cex=1.5, alpha=0.7, priority="random")+
-    stat_summary(fun.data=mean_se, size=0.8,position=position_nudge(x=0.2))+
-    scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
-    labs(x="Pond community", y=label_name)+
-    theme_bw()
+generate_metric_panel <- function(data, file_name) {
+  
+  # Internal helper to create individual plots
+  make_individual_plot <- function(col_name, label_name) {
+    ggplot(data, aes(x = factor(pond), y = .data[[col_name]], color = cycle)) +
+      geom_beeswarm(side = -1L, cex = 1.5, alpha = 0.7, priority = "random") +
+      stat_summary(fun.data = mean_se, size = 0.8, color = "black", position = position_nudge(x = 0.2)) +
+      scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
+      labs(x = "Pond", y = label_name) +
+      theme_bw() +
+      theme(axis.title.y = element_text(size = 9),
+            axis.text = element_text(size = 8))
+  }
+  
+  # 2. Map through the response list to create all plots
+  # imap creates a loop over both names (col_name) and values (label_name)
+  plot_list <- imap(response_list, ~make_individual_plot(.y, .x))
+  
+  # 3. Combine with Patchwork
+  combined_plot <- wrap_plots(plot_list) +
+    guide_area() +
+    plot_layout(ncol = 5, guides = "collect") &
+    theme(
+      legend.key.size = unit(0.4, "cm"), 
+      legend.text = element_text(size = 8),
+      legend.title = element_text(size = 9),
+      legend.margin = margin(0, 0, 0, 0),
+      legend.box.margin = margin(-5, -5, -5, -5)
+    )
+  
+  # 4. Save the output
+  full_path <- here("Figures", paste0(file_name, ".png"))
+  ggsave(full_path, plot = combined_plot, dpi = 300, width = 12, height = 8, units = "in")
+  
+  return(combined_plot)
 }
 
-plot_list<-lapply(seq_along(response_list), make_time_pond_plot)
-
-combined_pondY_plot<-wrap_plots(plot_list)+
-  guide_area()+
-  plot_layout(ncol=5, guides="collect")&
-  theme(
-    # Shrink the legend keys (the colored boxes/dots)
-    legend.key.size = unit(0.5, "cm"), 
-    # Shrink legend text and title
-    legend.text = element_text(size = 8),
-    legend.title = element_text(size = 9),
-    # Reduce the spacing around the legend to prevent overlap
-    legend.margin = margin(0, 0, 0, 0),
-    legend.box.margin = margin(-5, -5, -5, -5)
-  )
-print(combined_pondY_plot)
-
-ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
+#run function for different data sets
+generate_metric_panel(Transition_metrics, "MetricbyPondYear")
+generate_metric_panel(Transition_metrics_g1, "MetricbyPondYear_g1")
+generate_metric_panel(Transition_metrics_g2, "MetricbyPondYear_g2")
+generate_metric_panel(Transition_metrics_g3, "MetricbyPondYear_g3")
 
 
+```
+Now let's look at how node transitions is linked to species diversity and possible number of states. The goal is to calculate all possible states for a certain number of species, ignoring temporal partitioning, and see how this scales with number of species and realized number of community states we observe
+```{r}
 #look at unique node vs species with predicted expectation
 nodvsspecDiv_plot<-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
+  #plot points
   geom_beeswarm(size=3, alpha=0.6, color="#1b7837")+
-  labs(x="No. Species", y="Unique Nodes")+
-  stat_smooth(method=lm, formula=y~poly(x,2),
+  labs(x="Annual species richness ", y="Node diversity")+
+  #fit simple linear model (2nd order polynomial did not fit better)
+  stat_smooth(method=lm,
               color="#1b7837",
               fill="#1b7837", 
               alpha=0.2, 
               size=2)+
+  #calculate possible number of states for a given number of species ignoring temporal separation
   stat_function(fun = function(x) 2^x - 1, color = "#762a83", size = 2)+
   scale_y_log10() +
   scale_x_continuous(breaks = seq(1, max(Transition_metrics$No_Spec, na.rm = TRUE), by = 1)) +
@@ -1128,35 +1161,15 @@ nodvsspecDiv_plot<-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes))
   theme(axis.text = element_text(size = 10),
     axis.title = element_text(size = 16))
 
+#safe figure
 ggsave(here("Figures","NodevsSpecDiv.png"),plot=nodvsspecDiv_plot,dpi=600,width = 8, height = 6, units = "in")
 
-
-#
-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes)))+
-  geom_point()+  
-  scale_color_gradient(low = "#56B4E9", high = "#E69F00") +
-    labs(x="No. Species", y="Unique Nodes")+
-  stat_smooth(method=lm, formula=y~poly(x,2))+
-    theme_bw()
-
-#plot number of transitions
-ggplot(Transition_metrics, aes(x=TotalEdges))+
-  geom_histogram()+
-  facet_wrap(~pond,nrow=2)+
-  theme_bw()
-
-specUniqN<-lmer(log(Unique_Nodes)~No_Spec*pond +(1|cycle), data=Transition_metrics)
-Anova(specUniqN)
-  
-
-ggsave(here("Figures","MetricbyPondYear.png"),plot=combined_pondY_plot,dpi=300,width = 12, height = 8, units = "in")
-
 ```
+
 
 ##Metric averages
 Let's get averages across pond and time to desribe general patterns
 ```{r}
-
 #  SE function 
 se <- function(x, na.rm = FALSE) {
   if (na.rm) x <- x[!is.na(x)]
@@ -1174,106 +1187,95 @@ summary_table <- Transition_metrics %>%
 print(summary_table)
 ```
 
-
 ## test for pond and cycle differences
 Here we simply want to test if there are significant differences among ponds and within ponds across years. In the later analyses on climate, we will include pond as random effect and cycle will be instead represented by the respective annual climate data. 
-```{r}
-
+```{r lmAnalyses}
+#function to get statistics (same as above)
 library(tidyverse)
+library(mgcv)
 library(broom)
+library(flextable)
+library(here)
 
-Transition_metrics$cycleC<-as.factor(Transition_metrics$cycle)
-variable.for.extanalysis<-c("Unique_Nodes","Connectance","betweenness", "modularity", "mean_Distance", "meanDurAv", "freqStateAv", "skewDur", "TotalEdges", "ave_Edge_weight","skewEdge","B", "event.rate", "time_memory")
+run_temporal_network_analysis <- function(data, file_name, labels_vec = NULL) {
+  
+  # Prepare Data
+  # Ensure cycle is treated as both numeric (for GAM) and factor (for potential grouping)
+  data <- data %>%
+    mutate(cycleC = as.factor(cycle),
+           cycle = as.numeric(cycle))
+  
+  # Define the 15 metrics used in your network framework
+  metrics <- c("Unique_Nodes", "Connectance", "betweenness", 
+               "modularity", "mean_Distance", "meanDurAv", "freqStateAv", 
+               "skewDur", "TotalEdges", "ave_Edge_weight", "skewEdge", 
+               "B", "event.rate", "time_memory")
+  
+  # Run GAM Interaction Analysis
+  res_gam <- map_dfr(metrics, function(response) {
+    
+    # Fit the Full Model: Global trend + Pond-specific deviations (fs basis)
+    # k=4 is used as per your study design to avoid over-smoothing 24 years
+    form_full <- as.formula(paste(response, "~ pond + s(cycle, k = 4) + s(cycle, pond, bs = 'fs', k = 4)"))
+    mod_full <- gam(form_full, data = data, method = "ML")
+    
+    a_gam <- anova(mod_full)
+    
+    # Extract Parametric and Smooth terms
+    bind_rows(
+      data.frame(term = "pond", 
+                 statistic = a_gam$pTerms.table["pond", "F"], 
+                 p.value = a_gam$pTerms.table["pond", "p-value"]),
+      data.frame(term = "cycle", 
+                 statistic = a_gam$s.table["s(cycle)", "F"], 
+                 p.value = a_gam$s.table["s(cycle)", "p-value"]),
+      data.frame(term = "pond:cycle", 
+                 statistic = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "F"], 
+                 p.value = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "p-value"])
+    ) %>% 
+    mutate(response = response)
+  })
+  
+  #great table output
+  # Use labels if provided, otherwise keep raw metric names
+  if(!is.null(labels_vec)) {
+    res_gam <- res_gam %>% mutate(response = labels_vec[response])
+  }
+  
+  sig_table <- res_gam %>%
+    select(response, term, statistic, p.value) %>%
+    mutate(p.value = round(p.value, 4), statistic = round(statistic, 2)) %>%
+    pivot_wider(
+      names_from = term, 
+      values_from = c(statistic, p.value),
+      names_glue = "{term}_{.value}",
+      names_vary = "slowest"
+    ) %>%
+    select(response, starts_with("pond_"), starts_with("cycle_"), contains(":"))
 
-resultPondCycle <- map_dfr(variable.for.extanalysis, function(response) {
-  # 1. Construct the formula: response ~ pond + cycle
-  # 2. Use lm() instead of lmer()
-  model <- lm(as.formula(paste(response, "~ pond * cycleC")), data = Transition_metrics)
+  # 4. Create and Save Flextable
+  ft <- sig_table %>%
+    flextable() %>%
+    separate_header(split = "_") %>%
+    labelizor(labels = c("statistic" = "F", "p.value" = "p"), part = "header") %>%
+    theme_booktabs() %>%
+    bold(part = "header") %>%
+    align(align = "center", part = "all") %>%
+    set_caption(paste("Table: Pond and Cycle effect for", file_name)) %>%
+    autofit()
   
-  # 3. Use broom::tidy for standard lm models
-  tidy(anova(model), conf.int = TRUE) %>%
-    mutate(response = response) %>%
-    # Filter out the Intercept to focus on predictors
-    select(response, term, df, statistic, p.value)%>%
-  filter(term!="Residuals")
-})
+  save_as_docx(ft, path = here("Output", paste0(file_name, ".docx")))
+  
+  return(ft)
+}
+```
+now run it with all data sets
+```{r}
+run_temporal_network_analysis(Transition_metrics_g, "Anova_PondCycle", variable_labels)
+run_temporal_network_analysis(Transition_metrics_g1, "Anova_PondCycle_G1", variable_labels)
+run_temporal_network_analysis(Transition_metrics_g2, "Anova_PondCycle_G2", variable_labels)
+run_temporal_network_analysis(Transition_metrics_g3, "Anova_PondCycle_G3", variable_labels)
 
-library(mgcv)
-
-library(tidyverse)
-library(mgcv)
-
-library(tidyverse)
-library(mgcv)
-
-res_gam_interaction <- map_dfr(variable.for.extanalysis, function(response) {
-  
-  # 1. Fit the Reduced Model (Common trend for all ponds)
-  form_red <- as.formula(paste(response, "~ pond + No_Spec+s(cycle, k = 4)"))
-  mod_red <- gam(form_red, data = Transition_metrics, method = "ML") # Use ML for comparison
-  
-  # 2. Fit the Full Model (Different trends per pond)
-  # We use the 'fs' (factor smooth) basis because it provides a single p-value 
-  # for the 'difference' between levels in an ANOVA-like way
-  form_full <- as.formula(paste(response, "~ pond +No_Spec+ s(cycle, k = 4) + s(cycle, pond, bs = 'fs', k = 4)"))
-  mod_full <- gam(form_full, data = Transition_metrics, method = "ML")
-  
-  # 3. Get the ANOVA/Summary info for the Full Model
-  a_gam <- anova(mod_full)
-  
-  # 4. Extract individual terms
-  # Parametric Pond effect
-  p_df <- data.frame(
-    term = "pond",
-    statistic = a_gam$pTerms.table["pond", "F"],
-    p.value = a_gam$pTerms.table["pond", "p-value"]
-  )
-  
-  # Global Cycle effect
-  c_df <- data.frame(
-    term = "cycle",
-    statistic = a_gam$s.table["s(cycle)", "F"],
-    p.value = a_gam$s.table["s(cycle)", "p-value"]
-  )
-  
-  # Interaction (Pond * Cycle) - Taken from the Factor Smooth term
-  # This term specifically tests the deviation of ponds from the global trend
-  i_df <- data.frame(
-    term = "pond:cycle",
-    statistic = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "F"],
-    p.value = a_gam$s.table[str_detect(rownames(a_gam$s.table), "cycle,pond"), "p-value"]
-  )
-  
-  bind_rows(p_df, c_df, i_df) %>% mutate(response = response)
-})
-
-# Create significance pattern table
-sig_tablePondCycle <- res_gam_interaction %>%
-  mutate(response=variable_labels[response])%>%
-  select(response,term,statistic,p.value) %>%
-  mutate(p.value = round(p.value, 4), statistic=round(statistic,2)) %>%
-  pivot_wider(
-    names_from = term, 
-    values_from = c(statistic,p.value),
-    names_glue = "{term}_{.value}",
-    names_vary = "slowest")%>%
-  select(response, starts_with("pond_"), starts_with("cycle_"),contains(":"))
-
-# Print formatted flextable for Word output
-ft<-sig_tablePondCycle %>%
-  flextable() %>%
-  separate_header(split="_") %>%
-  labelizor(
-    labels = c("statistic" = "F", "p.value" = "p"),
-    part = "header"
-  ) %>%
-  theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
-  bold(part = "header") %>%   # Make header bold
-  align(align = "center", part = "all") %>%  # Center all text
-  set_caption("Table: Pond and Cycle effect") %>%
-  autofit() 
-ft
-save_as_docx(ft,path=here("Output","Anova_PondCYcle_Results_Table.docx"))
 ```
 
 
