@@ -1244,7 +1244,8 @@ run_temporal_network_analysis <- function(data, file_name, labels_vec = NULL) {
   
   sig_table <- res_gam %>%
     select(response, term, statistic, p.value) %>%
-    mutate(p.value = round(p.value, 4), statistic = round(statistic, 2)) %>%
+    mutate(p.value = round(p.value, 4), 
+           statistic = round(statistic, 2)) %>%
     pivot_wider(
       names_from = term, 
       values_from = c(statistic, p.value),

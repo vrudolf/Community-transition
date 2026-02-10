@@ -96,17 +96,9 @@ corrg3<-round(cor(metrics_g3, use = "complete.obs"),1)
 p.mat<-cor_pmat(metrics_g3)
 ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)+
   ggtitle("Correlation matrix raw without ignoring 3 day gaps")
-
-#look at some of the strongest correlations
-ggplot(metrics, aes(x=Unique_Nodes, y=TotalEdges))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(metrics, aes(x=Weighted_connectance, y=Connectance))+geom_point()+stat_smooth(method="lm")+theme_bw()
-ggplot(metrics, aes(x=Weighted_connectance, y=harm.centrality))+geom_point()+stat_smooth(method="lm")+theme_bw()
-
-ggplot(metrics, aes(y=log(Unique_Nodes), x=No_Spec))+geom_point()+stat_smooth(method="lm")+theme_bw()
-
 ```
 So whether we ignore small gaps has  no effect on correlation between metrics even though metrics differ between those choices. 
-We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. Unique nodes and unique edges are also almost perfectly correlated, but we'll keep it for now since that's interesting.
+We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. 
 
 Let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship
 ```{r networkPCA, message=F}
@@ -167,8 +159,7 @@ netPCAclim_g1<-full_join(sumclima, metricPCA_g1)%>%select(pond, cycle, everythin
 netPCAclim_g3<-full_join(sumclima, metricPCA_g3)%>%select(pond, cycle, everything())
 
 ```
-So two PCA are enough to explain a lot of variation in all these variables, and the first explains by far the most. It's also interesting that the correlation between variables are largely robust and don't change a lot if we ignore small 1, - 3 day gaps in calling. 
-Based on these relationship, we definitely can drop unique nodes since it's almost perfectly correlated with uniqueEdges, and uniqueEdges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need  mean_t and st_t which are part of memory and burstiness. Connectance and Weighted_connectance are also highly correlated, and weighted_betweenness is also almost perfectly correlated with  harmonic centrality, so let's drop that one.
+It's also interesting that the correlation between variables are largely robust and don't change a lot if we ignore small 1, - 3 day gaps in calling. Based on these relationship, we definitely can drop unique nodes since it's almost perfectly correlated with uniqueEdges, and uniqueEdges seems to be more different from No_species than unique nodes and bit more informative on other aspects of the network. We also don't need  mean_t and st_t which are part of memory and burstiness. Connectance and Weighted_connectance are also highly correlated.
 
 
 #Network structure & Weather 
@@ -189,7 +180,7 @@ currentPCdata<-netclimPC_g1
 
 
 #get variables to analyze
-variable.for.extanalysis<-c("Unique_Nodes","TotalEdges","Connectance","betweenness", "modularity", "mean_Distance", "skewEdge", "ave_Edge_weight","B", "meanDurAv", "freqStateAv", "skewDur", "event.rate", "time_memory")
+variable.for.extanalysis<-c("Unique_Nodes","Connectance", "modularity","betweenness", "mean_Distance", "freqStateAv",    "meanDurAv","skewDur","TotalEdges","ave_Edge_weight","skewEdge", "time_memory", "B","event.rate")
 
 #scale data to be comparable but first log-transform two variables to improve lmer model fit
 currentPCdataS<-currentPCdata%>% 
@@ -202,6 +193,7 @@ resPCA <- map_dfr(variable.for.extanalysis, function(response) {
   # Fit the mixed model for this response
   model <- lmerTest::lmer(as.formula(paste(response,"~ PC1+PC2 +(1 | pond)")), data = currentPCdataS)
   
+
   # Tidy model output: fixed effects only, with confidence intervals
   broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
     mutate(response = response)%>%
@@ -212,20 +204,32 @@ resPCA <- map_dfr(variable.for.extanalysis, function(response) {
 # Create significance pattern table
 sig_tablePCA <- resPCA %>%
   mutate(response=variable_labels[response])%>%
-  select(response, term,p.value) %>%
-  mutate(p.value = round(p.value, 4)) %>%
+  select(response, term,p.value, statistic) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    statistic=round(statistic,2)
+    ) %>%
   pivot_wider(
     names_from = term, 
-    values_from = p.value)
+    values_from = c(statistic,p.value),
+    names_glue="{term}_{.value}",
+    names_vary="slowest"
+  )
+
+
 
 # Print formatted flextable for Word output
-sig_tablePCA %>%
+sig_table_PCA<-sig_tablePCA %>%
   flextable() %>%
   set_caption("Table: Significance Patterns") %>%
   theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
   bold(part = "header") %>%   # Make header bold
   align(align = "center", part = "all") %>%  # Center all text
   autofit()  
+
+#save table
+save_as_docx(sig_table_PCA, path = here("Output", "sig_table_PCA.docx"))
+
 
 ```
 
@@ -335,7 +339,43 @@ res <- map_dfr(variable.for.extanalysis, function(response) {
   }
   )
 
+# Create significance pattern table
+sig_tableExt <- res %>%
+  mutate(response=variable_labels[response])%>%
+  select(response, term,p.value, statistic) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    statistic=round(statistic,2)
+    ) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = c(statistic,p.value),
+    names_glue="{term}_{.value}",
+    names_vary="slowest"
+  )
+
+# Print formatted flextable for Word output
+sig_table_Ex<-sig_tableExt %>%
+  flextable() %>%
+  set_caption("Table: Significance Patterns") %>%
+  theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
+  bold(part = "header") %>%   # Make header bold
+  align(align = "center", part = "all") %>%  # Center all text
+  autofit()  
+
+#save table
+save_as_docx(sig_table_Ex, path = here("Output", "sig_table_Ext.docx"))
+
 ```
+test if species diversity differs between extreme years
+```{r}
+sp_Ex<-lmer(No_Spec~ extHot+extDryT + (1 | pond), data = netclimR)
+plot(sp_Ex)
+Anova(sp_Ex)
+
+```
+
+
 
 Plot effect sizes of extreme drought and temperature
 ```{r}
@@ -417,3 +457,87 @@ coef.plotE
 ggsave(here("Figures","ExtremeClim.effect.png"),plot=coef.plotE,dpi=600,width = 30, height = 15, units = "cm")
 
 ```
+
+lets repeat the analysis with No_species as covariate
+```{r}
+resPCA_sp <- map_dfr(variable.for.extanalysis, function(response) {
+  # Fit the mixed model for this response
+  model <- lmerTest::lmer(as.formula(paste(response,"~ PC1+PC2 +No_Spec+(1 | pond)")), data = currentPCdataS)
+  
+
+  # Tidy model output: fixed effects only, with confidence intervals
+  broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+    mutate(response = response)%>%
+    filter(!str_detect(term,"(Intercept)"))
+  }
+  )
+
+# Create significance pattern table
+sig_tablePCA_sp <- resPCA_sp %>%
+  mutate(response=variable_labels[response])%>%
+  select(response, term,p.value, statistic) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    statistic=round(statistic,2)
+    ) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = c(statistic,p.value),
+    names_glue="{term}_{.value}",
+    names_vary="slowest"
+  )
+
+
+
+# Print formatted flextable for Word output
+sig_table_PCA_sp<-sig_tablePCA_sp %>%
+  flextable() %>%
+  set_caption("Table: Significance Patterns") %>%
+  theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
+  bold(part = "header") %>%   # Make header bold
+  align(align = "center", part = "all") %>%  # Center all text
+  autofit()  
+
+#save table
+save_as_docx(sig_table_PCA_sp, path = here("Output", "sig_table_PCA_sp.docx"))
+```
+now same for extreme
+```{r}
+res_sp <- map_dfr(variable.for.extanalysis, function(response) {
+  # Fit the mixed model for this response
+  model <- lmer(as.formula(paste(response,"~ extHot+extDryT + No_Spec+(1 | pond)")), data = netclimR)
+  
+  # Tidy model output: fixed effects only, with confidence intervals
+  broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
+    mutate(response = response)%>%filter(!str_detect(term,"(Intercept)"))
+  }
+  )
+
+# Create significance pattern table
+sig_tableExt_sp <- res_sp %>%
+  mutate(response=variable_labels[response])%>%
+  select(response, term,p.value, statistic) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    statistic=round(statistic,2)
+    ) %>%
+  pivot_wider(
+    names_from = term, 
+    values_from = c(statistic,p.value),
+    names_glue="{term}_{.value}",
+    names_vary="slowest"
+  )
+
+# Print formatted flextable for Word output
+sig_table_Ex_sp<-sig_tableExt_sp %>%
+  flextable() %>%
+  set_caption("Table: Significance Patterns") %>%
+  theme_booktabs() %>%        # Adds horizontal lines under header and at bottom
+  bold(part = "header") %>%   # Make header bold
+  align(align = "center", part = "all") %>%  # Center all text
+  autofit()  
+
+#save table
+save_as_docx(sig_table_Ex_sp, path = here("Output", "sig_table_Ext_sp.docx"))
+```
+
