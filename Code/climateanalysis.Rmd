@@ -6,11 +6,6 @@ output:
   html_document: default
   pdf_document: default
 ---
----
-title: "Climate_community"
-output: html_document
-date: "2025-05-16"
----
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE)
@@ -18,7 +13,6 @@ knitr::opts_chunk$set(echo = FALSE)
 
 # Goals
 We will examine how climate variables are linked to different aspects of community state transitions. THis is focused on frog calling data from 8 different ponds across 22 years. Climate data is taking from local weather stations, and frog calling data was converted to transition matrix indicating how community states (i.e. a specific combination of species) transition over time within a year.
-
 
 ## Load packages & data
 ```{r, warning=FALSE, message=FALSE}
@@ -173,14 +167,14 @@ netclimPC_g1<-left_join(netclim_g1,climatePCA)
 netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
-currentPCdata<-netclimPC_g1
+currentPCdata<-netclimPC
 
 #note, I could test for random pond effect using ranova function of lmerTest package
 #i can also use the performance package to quantify effect size as explained variance for random effect.
 
 
 #get variables to analyze
-variable.for.extanalysis<-c("Unique_Nodes","Connectance", "modularity","betweenness", "mean_Distance", "freqStateAv",    "meanDurAv","skewDur","TotalEdges","ave_Edge_weight","skewEdge", "time_memory", "B","event.rate")
+variable.for.extanalysis<-c("Unique_Nodes","Connectance", "modularity","betweenness", "mean_Distance", "freqStateAv",    "meanDurAv","skewDur","TotalEdges","ave_Edge_weight","skewEdge", "time_memory","B","event.rate")
 
 #scale data to be comparable but first log-transform two variables to improve lmer model fit
 currentPCdataS<-currentPCdata%>% 
@@ -541,3 +535,5 @@ sig_table_Ex_sp<-sig_tableExt_sp %>%
 save_as_docx(sig_table_Ex_sp, path = here("Output", "sig_table_Ext_sp.docx"))
 ```
 
+#Gap Robustness
+now plot for different gap assumptions

@@ -66,107 +66,8 @@ sumclimaY<-climate%>%group_by(cycle)%>%
 We will identify extreme climate events based on the deviation from the average and plot it for reference. We'll focus on extreme hot and dry for now. 
 
 ```{r ExtremeYears}
-sumclimaYE<-subset(sumclimaY, cycle<25)%>%
-  mutate(
-    mMaxTY=mean(meanMaxT),
-    mMinTY=mean(meanMinT),
-    mPrecY=mean(meanPrec),
-    mhotdaysY=mean(hotdays),
-    mNoPrec=mean(noPrec),
-    eMaxTY=mean(meanMaxT)+sd(meanMaxT),
-    eMinTY=mean(meanMinT)-sd(meanMinT),
-    ePrecY=mean(meanPrec)-sd(meanPrec),
-    eNoPrec=mean(mNoPrec)+sd(noPrec),
-    ehotdaysY=mean(hotdays)+sd(hotdays),
-    )%>%
-  mutate(exthighTemp=ifelse(meanMaxT>eMaxTY, "Yes", "No"),
-         extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
-         extlongHeat=ifelse(hotdays>ehotdaysY, "Yes", "No"),
-         extDry=ifelse(meanPrec<ePrecY, "Yes", "No"),
-         extDryDays=ifelse(noPrec>eNoPrec, "Yes", "No"),
-         extHot=ifelse(exthighTemp=="Yes" | extlongHeat=="Yes", "Yes", "No"),
-         extDryT=ifelse(extDry=="Yes" | extDryDays=="Yes", "Yes", "No"))
-
-#save extreme categories
-write.csv(sumclimaYE, here("output","sumclimaYE.csv"), row.names = FALSE)
-
-#make plots
-ETmaxplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=meanMaxT))+
-  geom_hline(aes(yintercept=mMaxTY),linetype="dashed")+
-  geom_line()+
-  geom_point(aes(color=exthighTemp), size=3)+
-  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
-  labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
-  scale_color_manual(name = "Extreme event",
-    values = c("No" = "black", "Yes" = "red"))+
-  scale_x_continuous(
-    limits = c(1, NA), 
-    breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
-  theme_classic()+
-  theme(legend.position = c(0.15, 0.9),
-        axis.text.x = element_text(size = 10), 
-        axis.text.y = element_text(size = 10), 
-        axis.title = element_text(size = 14),)+theme(legend.position = "none")
-
-Ehotdayplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=hotdays))+
-  geom_hline(aes(yintercept=mhotdaysY),linetype="dashed")+
-  geom_line()+
-  geom_point(aes(color=extlongHeat), size=3)+
-  geom_ribbon(aes(ymin = mhotdaysY-sd(hotdays), ymax = ehotdaysY), alpha = 0.3, fill = "grey") +
-  labs(y="Total hot days (>35\u00b0C)", x="Annual Cycle")+
-  scale_color_manual(name = "Extreme event",
-    values = c("No" = "black", "Yes" = "red"))+
-  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
-  theme_classic()+
-  theme(legend.position = "none")+
-  theme(legend.position = c(0.15, 0.9),
-        axis.text.x = element_text(size = 10), 
-        axis.text.y = element_text(size = 10), 
-        axis.title = element_text(size = 14))
-  
-Eprecplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=meanPrec))+
-  geom_hline(aes(yintercept=mPrecY),linetype="dashed")+
-  geom_line()+
-  geom_point(aes(color=extDry), size=3)+
-  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
-  labs(y="Precipitation (mm)", x="Annual Cycle")+
-  scale_color_manual(name = "Extreme event",
-    values = c("No" = "black", "Yes" = "red"))+
-  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
-  theme_classic()+
-  theme(legend.position = "none")+
-  theme(legend.position = c(0.15, 0.9),
-        axis.text.x = element_text(size = 10), 
-        axis.text.y = element_text(size = 10), 
-        axis.title = element_text(size = 14))
-  
-Enorainplot<-ggplot(subset(sumclimaYE),aes(x=cycle,y=noPrec))+
-  geom_hline(aes(yintercept=mNoPrec),linetype="dashed")+
-  geom_line()+
-  geom_point(aes(color=extDryDays), size=3)+
-  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey")+
-  labs(y="Total days without rain", x="Annual Cycle")+
-  scale_color_manual(name = "Extreme event",
-    values = c("No" = "black", "Yes" = "red"))+
-  scale_x_continuous(limits = c(1, NA), breaks = seq(from = 1, to = max(sumclimaYE$cycle), by = 1))+
-  theme_classic()+
-  theme(legend.position = "none")+
-  theme(legend.position = c(0.15, 0.9),
-        axis.text.x = element_text(size = 10), 
-        axis.text.y = element_text(size = 10), 
-        axis.title = element_text(size = 14))
-  
-combined_plot <- (ETmaxplot + Ehotdayplot) / (Eprecplot + Enorainplot)+
-  plot_layout(guides="collect")& 
-  theme(
-    legend.position = "none",
-    #axis.text = element_text(size = 8), 
-    #axis.title = element_text(size = 9, face="bold")
-  )+theme(legend.position="top")
-
-combined_plot
-ggsave(here("Figures","extremeYears.png"),plot=combined_plot,dpi=600,width = 30, height = 15, units = "cm")
-
+#load extreme years based on 50 year historical data, see "historical climate analysis"
+extY<-read_csv(here("output","extremeyearsHist.csv"))
 ```
 
 #Burstiness of rainfall
@@ -231,7 +132,7 @@ sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<25)
 Now that we have all weather data, we save it and we scale the variables so we can compare them
 ```{r scaleweatherdata}
 #save raw data with extreme years
-sumclimaYE<-left_join(sumclimaYBD, sumclimaYE)
+sumclimaYE<-left_join(sumclimaYBD, extY)
 write_csv(sumclimaYE, here("output","frog_climate_data_annualsum.csv"))
 
 #normalize the climate data since they are all on different scales.

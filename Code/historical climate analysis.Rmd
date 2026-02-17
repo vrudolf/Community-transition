@@ -1,0 +1,304 @@
+---
+title: "Historical Climate analysis"
+author: "Volker Rudolf"
+date: "2026-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+# Goals
+We will analyze historical climate (~100years) to determine extreme years.
+
+
+## Load packages & data
+```{r, warning=FALSE, message=FALSE}
+ #Load packages
+  #list of packages that are needed
+  pack<-c("tidyverse",
+          "knitr",
+          "here",
+          "lubridate",
+          "paletteer",
+          "ggpubr",
+          "patchwork",
+          "factoextra"
+          )
+  #check whether packages are installed and load them, if not get and then load
+ package.check <- lapply(pack, FUN = function(x){
+    if (!require(x, character.only = TRUE)) 
+      {
+        install.packages(x, dependencies = TRUE)
+        library(x, character.only = TRUE)
+      }
+    })
+   #search() #verify that packages are loaded
+```
+
+#load Temperature and precipitation data
+
+```{r}
+#get and organize raw daily climate observations from weather station
+hclimate<-read_csv(here("data","LufkinClimatedata1906_2025.csv"))%>%select(DATE,PRCP,TMAX,TMIN)
+hclimate$DATE<-as.Date(hclimate$DATE,format="%m/%d/%Y")
+hclimate<-hclimate%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))
+
+#now this is usually on annual basis, but we need to align it with the "frog cycle" we used for the community analysis
+hclimate<-hclimate%>%subset(year<2025)%>%
+  mutate(cycle=case_when(
+  doy>340~year+1,
+  .default=year
+))
+hclimate<-hclimate%>%mutate(cycle_day=case_when(
+  doy>=339~doy-338,
+  .default=doy+27
+))
+
+sumclimaHY<-hclimate%>%group_by(cycle)%>%
+  summarize(meanMaxT=mean(TMAX,na.rm = TRUE), 
+            meanMinT=mean(TMIN,na.rm = TRUE),
+            hotdays=sum(TMAX > 35,na.rm = TRUE),
+            meanPrec=mean(PRCP,na.rm=TRUE),
+            noPrec=sum(PRCP==0,na.rm=TRUE),
+            recDays=length(DATE)
+            )
+
+#check how many data points there are per year
+ggplot(sumclimaHY, aes(x=cycle, y=recDays))+geom_point()+theme_bw()
+
+incomplete_years <- sumclimaHY %>%
+  filter(recDays < 364)%>%pull(cycle)
+print(incomplete_years)
+#so we see there are several 9 years with incomplete data including one with 306 and one with 335 days.  
+
+c_sumclimaHY<-sumclimaHY%>%filter(!(cycle %in% incomplete_years))%>%subset(cycle>1973)
+```
+so we need to exlude years that don't have enough entries, that includes first year
+
+# Extreme climate year
+
+```{r}
+cs_sumclimaHY<-c_sumclimaHY%>%subset(cycle>1973)%>%
+  mutate(
+    mMaxTY=mean(meanMaxT),
+    mMinTY=mean(meanMinT),
+    mPrecY=mean(meanPrec),
+    mhotdaysY=mean(hotdays),
+    mNoPrec=mean(noPrec),
+    eMaxTY=mean(meanMaxT)+sd(meanMaxT),
+    eMinTY=mean(meanMinT)-sd(meanMinT),
+    ePrecY=mean(meanPrec)-sd(meanPrec),
+    eNoPrec=mean(mNoPrec)+sd(noPrec),
+    ehotdaysY=mean(hotdays)+sd(hotdays),
+    )%>%
+  mutate(exthighTemp=ifelse(meanMaxT>eMaxTY, "Yes", "No"),
+         extlowTemp=ifelse(meanMinT<eMinTY, "Yes", "No"),
+         extlongHeat=ifelse(hotdays>ehotdaysY, "Yes", "No"),
+         extDry=ifelse(meanPrec<ePrecY, "Yes", "No"),
+         extDryDays=ifelse(noPrec>eNoPrec, "Yes", "No"),
+         extHot=ifelse(exthighTemp=="Yes" | extlongHeat=="Yes", "Yes", "No"),
+         extDryT=ifelse(extDry=="Yes" | extDryDays=="Yes", "Yes", "No"))
+
+
+#make plots
+HETmaxplot<-ggplot(subset(cs_sumclimaHY),aes(x=cycle,y=meanMaxT))+
+  annotate("rect", xmin = 2000.5, xmax = 2025, ymin = -Inf, ymax = Inf, 
+           color="black",linewidth=0.5,fill = NA, linetype="solid") +
+  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
+  geom_segment(aes(x = 1974, xend = 2024, y = mMaxTY, yend = mMaxTY), 
+             linetype = "dashed", color = "black")+
+  geom_line()+
+  geom_point(aes(color=ifelse(cycle>2000,exthighTemp,"No")), size=3)+
+  annotate("rect", xmin = 1973, xmax = 2000.5, ymin = -Inf, ymax = Inf, 
+           fill="grey",alpha=0.35) +
+  labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(1973, NA), 
+    breaks = seq(from = 1974, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14),)+theme(legend.position = "none")
+
+HEhotdayplot<-ggplot(subset(cs_sumclimaHY),aes(x=cycle,y=hotdays))+
+   annotate("rect", xmin = 2000.5, xmax = 2025, ymin = -Inf, ymax = Inf, 
+           color="black",linewidth=0.5,fill = NA, linetype="solid") +
+  geom_ribbon(aes(ymin = mhotdaysY-sd(hotdays), ymax = ehotdaysY), alpha = 0.3, fill = "grey") +
+  geom_segment(aes(x = 1974, xend = 2024, y = mhotdaysY, yend = mhotdaysY), 
+             linetype = "dashed", color = "black")+
+  geom_line()+
+  geom_point(aes(color=ifelse(cycle>2000,extlongHeat,"No")), size=3)+
+  annotate("rect", xmin = 1973, xmax = 2000.5, ymin = -Inf, ymax = Inf, 
+           fill="grey",alpha=0.3) +labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  labs(y="Total hot days (>35\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(1973, NA), 
+    breaks = seq(from = 1974, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+HEprecplot<-ggplot(subset(cs_sumclimaHY),aes(x=cycle,y=meanPrec))+
+  annotate("rect", xmin = 2000.5, xmax = 2025, ymin = -Inf, ymax = Inf, 
+           color="black",linewidth=0.5,fill = NA, linetype="solid") +
+  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
+  geom_segment(aes(x = 1974, xend = 2024, y = mPrecY, yend = mPrecY), 
+             linetype = "dashed", color = "black")+
+  geom_line()+
+  geom_point(aes(color=ifelse(cycle>2000,extDry, "No")), size=3)+
+  annotate("rect", xmin = 1973, xmax = 2000.5, ymin = -Inf, ymax = Inf, 
+           fill="grey",alpha=0.3) +labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  labs(y="Precipitation (mm)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(1973, NA), 
+    breaks = seq(from = 1974, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+HEnorainplot<-ggplot(subset(cs_sumclimaHY),aes(x=cycle,y=noPrec))+
+  annotate("rect", xmin = 2000.5, xmax = 2025, ymin = -Inf, ymax = Inf, 
+           color="black",linewidth=0.5,fill = NA, linetype="solid") +
+  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey")+
+  geom_segment(aes(x = 1974, xend = 2024, y = mNoPrec, yend = mNoPrec), 
+             linetype = "dashed", color = "black")+
+  geom_line()+
+  geom_point(aes(color=ifelse(cycle>2000,extDryDays,"No")), size=3)+
+  annotate("rect", xmin = 1973, xmax = 2000.5, ymin = -Inf, ymax = Inf, 
+           fill="grey",alpha=0.3) +labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  labs(y="Total days without rain", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(1973, NA), 
+    breaks = seq(from = 1974, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+Hcombined_plot <- (HETmaxplot + HEhotdayplot) / (HEprecplot + HEnorainplot)+
+  plot_layout(guides="collect")& 
+  theme(
+    legend.position = "none",
+    #axis.text = element_text(size = 8), 
+    #axis.title = element_text(size = 9, face="bold")
+  )+theme(legend.position="top")
+
+Hcombined_plot
+ggsave(here("Figures","extremeYears50.png"),plot=Hcombined_plot,dpi=600,width = 30, height = 15, units = "cm")
+```
+
+same but only focusing on study period
+```{r}
+#make plots
+HSETmaxplot<-ggplot(subset(cs_sumclimaHY, cycle>2000),aes(x=cycle,y=meanMaxT))+
+  geom_ribbon(aes(ymin = mMaxTY-sd(meanMaxT), ymax = eMaxTY), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mMaxTY),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=exthighTemp), size=3)+
+ labs(y="Daily high temperature (\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(2000, NA), 
+    breaks = seq(from = 2001, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14),)+theme(legend.position = "none")
+
+HSEhotdayplot<-ggplot(subset(cs_sumclimaHY,cycle>2000),aes(x=cycle,y=hotdays))+
+  geom_ribbon(aes(ymin = mhotdaysY-sd(hotdays), ymax = ehotdaysY), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mhotdaysY),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=extlongHeat), size=3)+
+  labs(y="Total hot days (>35\u00b0C)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(2000, NA), 
+    breaks = seq(from = 2001, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+HSEprecplot<-ggplot(subset(cs_sumclimaHY,cycle>2000),aes(x=cycle,y=meanPrec))+
+  geom_ribbon(aes(ymax = mPrecY+sd(meanPrec), ymin = ePrecY), alpha = 0.3, fill = "grey") +
+  geom_hline(aes(yintercept=mPrecY),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=extDry), size=3)+
+  labs(y="Precipitation (mm)", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(2000, NA), 
+    breaks = seq(from = 2001, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+HSEnorainplot<-ggplot(subset(cs_sumclimaHY,cycle>2000),aes(x=cycle,y=noPrec))+
+  geom_ribbon(aes(ymin = mNoPrec-sd(noPrec), ymax = mNoPrec+sd(noPrec)), alpha = 0.3, fill = "grey")+
+  geom_hline(aes(yintercept=mNoPrec),linetype="dashed")+
+  geom_line()+
+  geom_point(aes(color=extDryDays), size=3)+
+  labs(y="Total days without rain", x="Annual Cycle")+
+  scale_color_manual(name = "Extreme event",
+    values = c("No" = "black", "Yes" = "red"))+
+  scale_x_continuous(
+    limits = c(2000, NA), 
+    breaks = seq(from = 2001, to = max(cs_sumclimaHY$cycle), by = 5))+
+  theme_classic()+
+  theme(legend.position = "none")+
+  theme(legend.position = c(0.15, 0.9),
+        axis.text.x = element_text(size = 10), 
+        axis.text.y = element_text(size = 10), 
+        axis.title = element_text(size = 14))
+  
+HScombined_plot <- (HSETmaxplot + HSEhotdayplot) / (HSEprecplot + HSEnorainplot)+
+  plot_layout(guides="collect")& 
+  theme(
+    legend.position = "none",
+    #axis.text = element_text(size = 8), 
+    #axis.title = element_text(size = 9, face="bold")
+  )+theme(legend.position="top")
+
+HScombined_plot
+ggsave(here("Figures","extremeYears50SE.png"),plot=HScombined_plot,dpi=600,width = 30, height = 15, units = "cm")
+```
+now let's save the extreme year info to combine it with the other climate data
+```{r}
+#first need to align cycle same way as previously
+cs_sumclimaHY.r<-cs_sumclimaHY%>%
+  select(cycle,exthighTemp,extlongHeat,extDry,extDryDays,extHot,extDry,extDryT)%>%
+  subset(cycle>2000)%>%
+  mutate(year=cycle,cycle=cycle-2000)
+
+write.csv(cs_sumclimaHY.r, here("output","extremeyearsHist.csv"), row.names = FALSE)
+```
+
