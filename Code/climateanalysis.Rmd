@@ -66,35 +66,7 @@ netclim_g3 <- reduce(list(sumclima, state_connectance_metrics_g3), full_join) %>
   select(pond, cycle, Pond_Cycle, everything())
 
 ```
-
-
-before we get into analysis lets look at correlation between network metrics
-```{r metric correlations}
-library(ggcorrplot)
-metrics<-state_connectance_metrics%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g1<-state_connectance_metrics_g1%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g2<-state_connectance_metrics_g2%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-metrics_g3<-state_connectance_metrics_g3%>%select(-pond,-cycle,-Pond_Cycle, -markov_memory)
-
-corr<-round(cor(metrics, use = "complete.obs"),1)
-p.mat<-cor_pmat(metrics)
-ggcorrplot(corr, hc.order=TRUE, type="upper",lab="TRUE", p.mat=p.mat)+
-  ggtitle("Correlation matrix raw data, without ignoring gaps")
-
-corrg1<-round(cor(metrics_g1, use = "complete.obs"),1)
-p.mat<-cor_pmat(metrics_g1)
-ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)+
-  ggtitle("Correlation matrix raw ignoring 1 day gaps")
-
-corrg3<-round(cor(metrics_g3, use = "complete.obs"),1)
-p.mat<-cor_pmat(metrics_g3)
-ggcorrplot(corr, hc.order=TRUE, type="upper", lab="TRUE",p.mat=p.mat)+
-  ggtitle("Correlation matrix raw without ignoring 3 day gaps")
-```
-So whether we ignore small gaps has  no effect on correlation between metrics even though metrics differ between those choices. 
-We also see metrics we can drop: weighted_connectance and connectance are perfectly correlated, so let's drop weighted_connectance, sd_t and mean_t are highly correlated as well, so we can drop sd_t which is partially included in B. 
-
-Let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship
+For general info (not included in manuscript) let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship (note, correlations are in Community_transition code)
 ```{r networkPCA, message=F}
 library("factoextra")
 library("FactoMineR")
@@ -168,6 +140,23 @@ netclimPC_g2<-left_join(netclim_g2,climatePCA)
 netclimPC_g3<-left_join(netclim_g3,climatePCA)
 
 currentPCdata<-netclimPC
+
+variable_labels <- c(
+  "Unique_Nodes" = "Unique nodes",
+  "Connectance" = "Connectance",
+  "modularity" = "Modularity",
+  "betweenness" = "Betweenness",
+  "mean_Distance" = "Mean distance",
+  "meanDurAv" = "Node duration",
+  "freqStateAv" = "Node frequency",
+  "skewDur" = "Duration skewness",
+  "TotalEdges" = "Total edges",
+  "ave_Edge_weight"="Edge frequency",
+  "skewEdge" = "Skewness edge freq",
+  "time_memory" = "Memory",
+  "B" = "Burstiness",
+  "event.rate" = "Event rate"
+)
 
 #note, I could test for random pond effect using ranova function of lmerTest package
 #i can also use the performance package to quantify effect size as explained variance for random effect.

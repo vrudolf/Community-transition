@@ -28,7 +28,8 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "moments",
           "car",
           "ggbeeswarm",
-          "lme4"
+          "lme4",
+          "ggpubr"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -1279,4 +1280,95 @@ run_temporal_network_analysis(Transition_metrics_g3, "Anova_PondCycle_G3", varia
 
 ```
 
+#correlations among final metrics
+
+```{r}
+cor_metrics<-Transition_metrics%>%select(all_of(names(variable_labels)))
+
+variable_labels <- c(
+  "Unique_Nodes" = "Unique nodes",
+  "Connectance" = "Connectance",
+  "modularity" = "Modularity",
+  "betweenness" = "Betweenness",
+  "mean_Distance" = "Mean distance",
+  "meanDurAv" = "Node duration",
+  "freqStateAv" = "Node frequency",
+  "skewDur" = "Duration skewness",
+  "TotalEdges" = "Total edges",
+  "ave_Edge_weight"="Edge frequency",
+  "skewEdge" = "Skewness edge freq",
+  "time_memory" = "Memory",
+  "B" = "Burstiness",
+  "event.rate" = "Event rate"
+)
+corr <- round(cor(cor_metrics, use = "complete.obs"), 2)
+p.mat <- cor_pmat(cor_metrics)
+
+colnames(corr) <- rownames(corr) <- variable_labels
+colnames(p.mat) <- rownames(p.mat) <- variable_labels
+
+corplot<-ggcorrplot(corr, 
+                    hc.order=FALSE, 
+                    type="lower",lab="FALSE",
+                    legend.title = "Correlation (r)",
+                    colors = c("#6D9EC1", "white", "#E46726"))+
+  scale_y_discrete(limits = rev)+
+ theme_minimal(base_size = 12) +  # Sets a clean base for the plot
+  theme(
+    # Rotate and align X axis labels
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10, color = "black"),
+    axis.title.x = element_blank(),
+    axis.title.y = element_blank(),
+    axis.text.y = element_text(size = 10, color = "black"),
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 9),
+    panel.grid.major = element_blank(),
+    plot.margin = margin(10, 10, 10, 10)
+  )
+
+ggsave(here("Figures","MetricsCorrelationPlot.png"),plot=corplot,dpi=600,width = 18, height = 16, units = "cm", bg="white")
+```
+
+```{r}
+library(dplyr)
+library(ggcorrplot)
+
+# 1. Get the original column names in the specific order of your list
+target_cols <- names(variable_labels)
+friendly_names <- unname(variable_labels)
+
+# 2. Re-calculate or filter your Correlation and P-value matrices
+# Ensure they are sorted by target_cols BEFORE applying friendly names
+corr_ordered <- corr[target_cols, target_cols]
+p_ordered <- p.mat[target_cols, target_cols]
+
+# 3. Apply the friendly names to the ordered matrix
+colnames(corr_ordered) <- rownames(corr_ordered) <- friendly_names
+colnames(p_ordered) <- rownames(p_ordered) <- friendly_names
+
+# 4. Create the plot
+corplot <- ggcorrplot(
+  corr_ordered, 
+  hc.order = FALSE,        # Critical: stops it from re-grouping by similarity
+  type = "lower",          # Shows the bottom triangle
+  lab = FALSE, 
+  p.mat = p_ordered,
+  insig = "blank",
+  outline.col = "white",
+  legend.title = "Correlation (r)",
+  colors = c("#6D9EC1", "white", "#E46726")
+) +
+  # Force the X and Y axes to use the order from your variable_labels
+  # In R factors, the first level is the 'bottom' (y=1) or 'left' (x=1)
+  scale_x_discrete(limits = friendly_names) +
+  scale_y_discrete(limits = rev(friendly_names)) + 
+  theme_pubr(base_size = 12) +
+  theme(
+    axis.title = element_blank(),
+    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10),
+    axis.text.y = element_text(size = 10)
+  )
+
+print(corplot)
+```
 
