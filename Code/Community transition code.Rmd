@@ -9,7 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = FALSE)
 ```
 #Goals
-The goal of this analysis is to turn species phenologies into a network of community state transitions. When species co-occur, they form a community state, and each species combination is a unique state, which can occur more than once. Each state has a start and ending date, and transitions into a new state. This creates a network that we will analyze to better understand how communities change
+The goal of this analysis is to turn species phenologies into a network of community state transitions. When species co-occur, they form a community state, and each species combination is a unique state. Each state has a start and ending date, and transitions into a new state. That transition is treated as a directed edge, which is unique to a node pair. Each edge has a time stamp and a duration of 1 day (by default). Note a state and edge can occur more than once. This creates a time-ordered network of state transitions that we will analyze to better understand how the structure of communities changes over time (i.e. analyze it's temporal structure)
 
 ### Load packages
 ```{r, warning=FALSE, message=FALSE}
@@ -39,27 +39,28 @@ The goal of this analysis is to turn species phenologies into a network of commu
         library(x, character.only = TRUE)
       }
     })
-   #search() #verify that packages are loaded
-
 ```
 
 ## Get & transform data into a transition network
 
 ### get the data
-We assume the data comes in the form of Dynamic Nodes from the "frog data preparation" code, i.e. each observation (row) indicates when (e.g. the day) a species appears (onset) and disappears (terminus). This can happen multiple times for a given species. So there are at least 3 columns: 1) species ID, 2) onset, 3) terminus
+We assume the data comes in the form of Dynamic Nodes from the "frog data preparation" code, i.e. each observation (row) indicates when (e.g. the specific date) a species appears (onset) and disappears (terminus). This can happen multiple times for a given species. So there are at least 3 columns: (1) species ID, (2) onset, (3) terminus
 ```{r getdata, message=FALSE}
-#get previously curated data
-#raw data
-node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
+#get previously curated data raw data
+node_dynamic<-read_csv(here("./output/frogs_node_dynamic.csv"))%>%
+  select("pond", "cycle", "onset", "terminus", "species")%>%
+  relocate(species,.before=onset)%>%
+  subset(cycle<25)%>% #year 25 is incomplete so we want to drop it
+  mutate(pond = as.factor(pond))
 
 #get number of species per pond x cycle
-
 sp_num<-node_dynamic%>%
   group_by(pond, cycle)%>%
   summarize(No_Spec=n_distinct(species),.groups="drop")
+#safe for later
 write_rds(sp_num, here("./output/frog_pond_cycle_NoSpec.rds"))  
 
-#same data but ignoring gaps of either 1, 2, or 3 days between calling events.
+#same process, but we use different data sets that ignoring gaps of either 1, 2, or 3 days between calling events. This data is part of our robustness analysis
 node_dynamic_g1<-read_csv(here("./output/frogs_node_dynamic_gap1.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
 node_dynamic_g2<-read_csv(here("./output/frogs_node_dynamic_gap2.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
 node_dynamic_g3<-read_csv(here("./output/frogs_node_dynamic_gap3.csv"))%>%select("pond", "cycle", "onset", "terminus", "species")%>%relocate(species,.before=onset)%>%subset(cycle<25)%>%mutate(pond = as.factor(pond))
@@ -120,7 +121,8 @@ generate_state_transitions <- function(df) {
   
   return(result_df)
 }
-# Main function to process community states for any dataset
+
+# Main function to process community states for any data set
 process_community_states <- function(node_dynamic_data, 
                                    grouping_vars = c("pond", "cycle"),
                                    output_file = NULL,
@@ -131,18 +133,15 @@ process_community_states <- function(node_dynamic_data,
   if (nrow(node_dynamic_data) == 0) {
     stop("Input data is empty")
   }
-  
   required_cols <- c("onset", "terminus", "species")
   missing_cols <- setdiff(required_cols, names(node_dynamic_data))
   if (length(missing_cols) > 0) {
     stop(paste("Missing required columns:", paste(missing_cols, collapse = ", ")))
   }
-  
   missing_group_cols <- setdiff(grouping_vars, names(node_dynamic_data))
   if (length(missing_group_cols) > 0) {
     stop(paste("Missing grouping columns:", paste(missing_group_cols, collapse = ", ")))
   }
-  
   cat("Processing community states...\n")
   cat(paste("Grouping by:", paste(grouping_vars, collapse = ", "), "\n"))
   
@@ -196,12 +195,12 @@ process_community_states <- function(node_dynamic_data,
   return(community_states)
 }
 
-# Convenience wrapper for the most common use case (pond + cycle grouping)
+# Convenience wrapper for the most common used case (pond + cycle grouping)
 process_pond_cycle_states <- function(node_dynamic_data, 
                                     output_suffix = NULL,
                                     output_dir = here("output")) {
   
-  # Create output filename if suffix provided
+  # Create output file name if suffix provided
   output_file <- if (!is.null(output_suffix)) {
     file.path(output_dir, paste0("frog_CommunityStates", output_suffix, ".rds"))
   } else {
@@ -240,6 +239,7 @@ community_states_g2<-readRDS(here("./output/frog_CommunityStates_g3.rds"))
 community_states_g3<-readRDS(here("./output/frog_CommunityStates_g3.rds"))
 
 
+#check for NA in same cases the data recorded died, so those are true missing data. Overall, we found that this was random across ponds and did not affect our results.
 na_summary <- community_states %>%
   group_by(pond, cycle) %>%
   summarise(any_na = any(is.na(across(everything()))), .groups = "drop") %>%
@@ -322,6 +322,7 @@ Now that we have state transition networks, we can analyze the structure in vari
 ## Community states
 First, we look at community states,unique states, the average duration of a given state, and their frequency.
 ```{r state_stats, warning=FALSE}
+
 #average number of species per community state
 ggplot(subset(community_states, n_species!=0),
        aes(x=n_species, fill=as.factor(cycle)))+
@@ -389,7 +390,7 @@ com_state_Network_g3<-com_state_Ave_g3%>%
             skewDur=ifelse(is.na(skewness(meanDur, na.rm = TRUE)), 0, skewness(meanDur, na.rm = TRUE))
             )
 
-# compare frequency to exponential distribution most of the observations are below 70 days, with some extreme outliers
+# compare frequency to exponential distribution most of the observations are below 70 days, with some extreme outlier
 lambda_df <- community_states %>%
   subset(duration<70) %>%
   summarise(
@@ -406,8 +407,7 @@ lambda_df <- community_states %>%
   )
 
 
-
-# Choose a max x-value (duration range)
+# Choose a max x-value (duration range) for plotting
 max_duration <- max(community_states$duration)
 
 # Create curve points for each pond
@@ -420,6 +420,7 @@ exp_curve <- lambda_df %>%
     )
   })) %>%
   unnest(data)
+
 #plot data with exponential distribution for comparison
 Duration_probD_plot<-ggplot() +
   geom_area(data = exp_curve, aes(x = duration, y = density),
@@ -442,6 +443,7 @@ Duration_probD_plot<-ggplot() +
     axis.title = element_text(size = 12))+
   coord_cartesian(xlim = c(0, 60))
 
+#save the plot
 ggsave(here("Figures","Durationprop.png"),plot=Duration_probD_plot,dpi=300,width = 8, height = 8, units = "in")
 
 ```
@@ -472,7 +474,6 @@ corStat_dur_freq_g3 <- com_state_Ave_g3 %>%
 #plot the coefficients for each pond & cycle
 library(ggbeeswarm)
 
-
 freq_dur_plot<-ggplot(corStat_dur_freq, aes(x=pond, y=correlation, color=cycle, size=obs))+
  geom_beeswarm(side=-1L,cex=1, priority="density", alpha=0.6)+
   stat_summary(fun.data=mean_se, show.legend = FALSE, size=1, position=position_nudge(x=0.2))+
@@ -502,7 +503,7 @@ ggsave(here("Figures","StateDur_Freq.png"),plot=freq_dur_plot,dpi=300,width = 8,
 
 ```
 
-## timing of transitions
+## Timing of transitions
 There is likely to be a seasonal timing of transition between states, and we can look at how this varies across ponds and seasonal cycles. Since transitions in this type of data all have a single day duration, we can simple look at the distribution of start of nodes, which indicate when transitions happen. We are really interested in the day of the cycle when they happen. Note that we look at their temporal distribution using burstiness and memory below. For now we are really focused on the timing within a cycle. 
 
 ```{r transitiontiming}
@@ -528,7 +529,7 @@ Anova(meanDy)
 ```
 
 ##Event rate
-we can also look at cumulative events over time in a year to see how that differs across ponds and cycles. we will define the event rate is the number of changes in community state per unit time and we calculate that by fitting a linear model to cummulative number of events.
+we can also look at cumulative events over time in a year to see how that differs across ponds and cycles. we will define the event rate as the number of changes in community state per unit time and we calculate that by fitting a linear model to cumulative number of events.
 ```{r eventrate}
 
 daily_cumulative_onsets <- community_states %>%
@@ -651,8 +652,8 @@ timing_sum_g3<-left_join(sum_start_g3,eventvs.time_g1)
 ```
 
 ##Network Structure Analysis
-Finally, we can look at the whole structure of the transition network. We can do this as a temporal network, or transform it into a static Markov-chain network.
-The second option essentially ways the transition between nodes by the frequency at which the transitions occur. Note this option looses all temporal information except for pairwise transitions.
+Finally, we can look at the whole structure of the transition network. We can do this as a temporal network, or transform it into a Markov-chain transition network.
+The second option ways the transition between nodes by the frequency at which the transitions occur.
 
 ###Tansition graphs
 ```{r transitiongraph}
@@ -710,10 +711,10 @@ write_rds(community_networks_weighted_g3,file=here("./output/frog_community_netw
 ```
 
 # Network statistics on weighted transition graphs
-We can now calculate a number of statistics on basic "static" weighted transition graphs, with or without weights using the basic igraph package. Statistics like betweeness(), closseness(), strength(sums up edge weights), degree(), centrality (e.g. harmonic_centrality()), etc.
+We can now calculate a number of statistics for the network.
 
-## Edge diversity  
-Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We can think of this in term of either distributions of edges, weights, or evenness. If all transitions occur equally, then eveness of edges should be high, if some transitions are dominant and occur much more frequently, than eveness is low. So in simplest case, we can calculate this with Pielou's eveness index.
+## Edge metrics  
+Transition between certain state pairs can occur more common, indicating a back and forth, while other transitions may be rare. We will calculate three metrics: Total number of edges= total number of transitions observed. Average number of transitions for a given edge (ave_edge_weight), and skewnewss of edge frequency distribution.
 ```{r edge_diversity}
 #load edge frequency matrix
 trans_freq<-read_rds(here("./output/frog_trans_markov.rds"))
@@ -742,7 +743,7 @@ Trans_evenness_g3 <- calc_skew(trans_freq_g3)%>%select(pond, cycle,skewEdge,ave_
 ```
 
 ##Network metrics
-Let's calcuate more "typical" network metrics
+Let's calculate more "typical" network metrics, most are listed in the table in the main text and are caculated with igraph functions.
 ```{r transition_metrics}
 #load data
 community_networks_weighted<-read_rds(here("./output/frog_community_networks_weighted.rds"))
@@ -859,7 +860,7 @@ state_connectance_w_g3 <- analyze_network_metrics(community_networks_weighted_g3
 ```
 
 ## Burstiness
-We will calculate temporal distribution of events, in this case when a new state appears. This gives us a good idea of when and how changes are clumped in time or not. Values=1 indicate perfect (periodic) spacing, = 0 random, >0 clumping. Note, we need to decide if we include empty states in this calculation
+We will calculate temporal distribution of events, in this case when a new state appears. This gives us a good idea of when and how changes are clumped in time or not. Values=1 indicate perfect (periodic) spacing, = 0 random, >0 clumping.
 ```{r burstiness}
 #get data, we'll just use basic community state data for simplicity but could do this with network data too
 community_states<-read_rds(here("./output/frog_CommunityStates.rds"))
@@ -1043,7 +1044,7 @@ ggplot(memory_results, aes(x=cycle, y=time_memory, group=pond,color=pond))+
 
 ```
 
-Lets combine both with all the other network metrics into one data file
+Lets combine both with all the other network metrics into one data file that we will use in the climate analysis.
 ```{r combine_metrics, warning=FALSE}
 
 # Assume list of data frames
@@ -1069,8 +1070,9 @@ write_rds(Transition_metrics_g2, here("./output/frog_transition_matrix_metrics_g
 write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g3.rds"))
 ```
 
-#lets plot all response variables by pond and year
-```{r}
+#Plot metrics by pond and cycle
+lets plot all response variables by pond and year
+```{r metricsPlot}
 Transition_metrics<-readRDS(here("./output/frog_transition_matrix_metrics.rds"))
 
 library(tidyverse)
@@ -1078,7 +1080,7 @@ library(ggbeeswarm)
 library(patchwork)
 library(here)
 
-# 1. Define your standard response list outside the function
+#Define your standard response list outside in nicer format for plotting.
 response_list <- c(
   "Unique_Nodes" = "Unique nodes",
   "Connectance" = "Connectance",
@@ -1110,11 +1112,11 @@ generate_metric_panel <- function(data, file_name) {
             axis.text = element_text(size = 8))
   }
   
-  # 2. Map through the response list to create all plots
+  # Map through the response list to create all plots
   # imap creates a loop over both names (col_name) and values (label_name)
   plot_list <- imap(response_list, ~make_individual_plot(.y, .x))
   
-  # 3. Combine with Patchwork
+  # Combine all plots with Patchwork
   combined_plot <- wrap_plots(plot_list) +
     guide_area() +
     plot_layout(ncol = 5, guides = "collect") &
@@ -1126,7 +1128,7 @@ generate_metric_panel <- function(data, file_name) {
       legend.box.margin = margin(-5, -5, -5, -5)
     )
   
-  # 4. Save the output
+  # Save the plot
   full_path <- here("Figures", paste0(file_name, ".png"))
   ggsave(full_path, plot = combined_plot, dpi = 300, width = 12, height = 8, units = "in")
   
@@ -1138,9 +1140,8 @@ generate_metric_panel(Transition_metrics, "MetricbyPondYear")
 generate_metric_panel(Transition_metrics_g1, "MetricbyPondYear_g1")
 generate_metric_panel(Transition_metrics_g2, "MetricbyPondYear_g2")
 generate_metric_panel(Transition_metrics_g3, "MetricbyPondYear_g3")
-
-
 ```
+
 Now let's look at how node transitions is linked to species diversity and possible number of states. The goal is to calculate all possible states for a certain number of species, ignoring temporal partitioning, and see how this scales with number of species and realized number of community states we observe
 ```{r}
 #look at unique node vs species with predicted expectation
@@ -1169,7 +1170,7 @@ ggsave(here("Figures","NodevsSpecDiv.png"),plot=nodvsspecDiv_plot,dpi=600,width 
 
 
 ##Metric averages
-Let's get averages across pond and time to desribe general patterns
+Let's get averages across pond and time to describe general patterns
 ```{r}
 #  SE function 
 se <- function(x, na.rm = FALSE) {
@@ -1188,8 +1189,8 @@ summary_table <- Transition_metrics %>%
 print(summary_table)
 ```
 
-## test for pond and cycle differences
-Here we simply want to test if there are significant differences among ponds and within ponds across years. In the later analyses on climate, we will include pond as random effect and cycle will be instead represented by the respective annual climate data. 
+# Test for pond and cycle differences
+Here we will  test if there are significant differences among ponds and within ponds across years. In the later analyses on climate, we will include pond as random effect and cycle will be instead represented by the respective annual climate data. 
 ```{r lmAnalyses}
 #function to get statistics (same as above)
 library(tidyverse)
@@ -1206,7 +1207,7 @@ run_temporal_network_analysis <- function(data, file_name, labels_vec = NULL) {
     mutate(cycleC = as.factor(cycle),
            cycle = as.numeric(cycle))
   
-  # Define the 15 metrics used in your network framework
+  # Define the metrics used in your network framework
   metrics <- c("Unique_Nodes", "Connectance", "betweenness", 
                "modularity", "mean_Distance", "meanDurAv", "freqStateAv", 
                "skewDur", "TotalEdges", "ave_Edge_weight", "skewEdge", 
@@ -1255,7 +1256,7 @@ run_temporal_network_analysis <- function(data, file_name, labels_vec = NULL) {
     ) %>%
     select(response, starts_with("pond_"), starts_with("cycle_"), contains(":"))
 
-  # 4. Create and Save Flextable
+  # Create and Save Flextable which we can just paste into word
   ft <- sig_table %>%
     flextable() %>%
     separate_header(split = "_") %>%
@@ -1280,7 +1281,8 @@ run_temporal_network_analysis(Transition_metrics_g3, "Anova_PondCycle_G3", varia
 
 ```
 
-#correlations among final metrics
+##correlations among final metrics
+Since observations are not independent within a pond and we know there is a significant pond and cycle effect, we can't just look at raw correlation of metrics since this would inflate covariance. So we use the rmcorr package that looks at correlations within a subject (in our case ponds) 
 
 ```{r}
 cor_metrics<-Transition_metrics%>%select(all_of(names(variable_labels)))
@@ -1301,22 +1303,58 @@ variable_labels <- c(
   "B" = "Burstiness",
   "event.rate" = "Event rate"
 )
-corr <- round(cor(cor_metrics, use = "complete.obs"), 2)
-p.mat <- cor_pmat(cor_metrics)
 
-colnames(corr) <- rownames(corr) <- variable_labels
-colnames(p.mat) <- rownames(p.mat) <- variable_labels
+library(rmcorr)
 
-corplot<-ggcorrplot(corr, 
-                    hc.order=FALSE, 
-                    type="lower",lab="FALSE",
-                    legend.title = "Correlation (r)",
-                    colors = c("#6D9EC1", "white", "#E46726"))+
-  scale_y_discrete(limits = rev)+
- theme_minimal(base_size = 12) +  # Sets a clean base for the plot
+# Initialize empty matrices for R values and P values
+vars <- names(variable_labels)
+n <- length(vars)
+rm_r_matrix <- matrix(1, nrow = n, ncol = n, dimnames = list(vars, vars))
+rm_p_matrix <- matrix(0, nrow = n, ncol = n, dimnames = list(vars, vars))
+
+# Run the loop
+for (i in 1:(n-1)) {
+  for (j in (i+1):n) {
+    var_a <- vars[i]
+    var_b <- vars[j]
+    
+    # Calculate rmcorr
+    # participant = Pond, measure1/2 = the column names as strings
+    res <- tryCatch({
+      rmcorr(participant = "pond", 
+             measure1 = var_a, 
+             measure2 = var_b, 
+             dataset = Transition_metrics)
+    }, error = function(e) return(NULL))
+    
+    if (!is.null(res)) {
+      # Fill symmetric matrices
+      rm_r_matrix[i, j] <- rm_r_matrix[j, i] <- res$r
+      rm_p_matrix[i, j] <- rm_p_matrix[j, i] <- res$p
+    } else {
+      rm_r_matrix[i, j] <- rm_r_matrix[j, i] <- NA
+      rm_p_matrix[i, j] <- rm_p_matrix[j, i] <- 1
+    }
+  }
+}
+
+# Update labels for the plot
+colnames(rm_r_matrix) <- rownames(rm_r_matrix) <- variable_labels
+colnames(rm_p_matrix) <- rownames(rm_p_matrix) <- variable_labels
+
+corplot <- ggcorrplot(rm_r_matrix, 
+                    p.mat = rm_p_matrix,
+                    hc.order = FALSE, 
+                    type = "lower", 
+                    lab = TRUE,
+                    lab_size=3,
+                    digits=2,
+                    legend.title = "rmcorr (r)",
+                    colors = c("#6D9EC1", "white", "#E46726")) +
+  scale_y_discrete(limits = rev) +
+  theme_minimal(base_size = 12) + 
   theme(
-    # Rotate and align X axis labels
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10, color = "black"),
+     axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10, color = "black"),
     axis.title.x = element_blank(),
     axis.title.y = element_blank(),
     axis.text.y = element_text(size = 10, color = "black"),
@@ -1325,50 +1363,6 @@ corplot<-ggcorrplot(corr,
     panel.grid.major = element_blank(),
     plot.margin = margin(10, 10, 10, 10)
   )
-
-ggsave(here("Figures","MetricsCorrelationPlot.png"),plot=corplot,dpi=600,width = 18, height = 16, units = "cm", bg="white")
+corplot
+ggsave(here("Figures","MetricsCorrelationPlot_Corrected.png"),plot=corplot,dpi=600,width = 18, height = 16, units = "cm", bg="white")
 ```
-
-```{r}
-library(dplyr)
-library(ggcorrplot)
-
-# 1. Get the original column names in the specific order of your list
-target_cols <- names(variable_labels)
-friendly_names <- unname(variable_labels)
-
-# 2. Re-calculate or filter your Correlation and P-value matrices
-# Ensure they are sorted by target_cols BEFORE applying friendly names
-corr_ordered <- corr[target_cols, target_cols]
-p_ordered <- p.mat[target_cols, target_cols]
-
-# 3. Apply the friendly names to the ordered matrix
-colnames(corr_ordered) <- rownames(corr_ordered) <- friendly_names
-colnames(p_ordered) <- rownames(p_ordered) <- friendly_names
-
-# 4. Create the plot
-corplot <- ggcorrplot(
-  corr_ordered, 
-  hc.order = FALSE,        # Critical: stops it from re-grouping by similarity
-  type = "lower",          # Shows the bottom triangle
-  lab = FALSE, 
-  p.mat = p_ordered,
-  insig = "blank",
-  outline.col = "white",
-  legend.title = "Correlation (r)",
-  colors = c("#6D9EC1", "white", "#E46726")
-) +
-  # Force the X and Y axes to use the order from your variable_labels
-  # In R factors, the first level is the 'bottom' (y=1) or 'left' (x=1)
-  scale_x_discrete(limits = friendly_names) +
-  scale_y_discrete(limits = rev(friendly_names)) + 
-  theme_pubr(base_size = 12) +
-  theme(
-    axis.title = element_blank(),
-    axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1, size = 10),
-    axis.text.y = element_text(size = 10)
-  )
-
-print(corplot)
-```
-

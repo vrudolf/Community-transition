@@ -79,21 +79,21 @@ variable.for.extanalysis<-c("Unique_Nodes","Connectance", "modularity","betweenn
 
 run_pca_analysis <- function(data_input, vars_to_analyze, file_name) {
   
-  # 1. Internal Label Map
+  # Internal Label Map
   # Add any other "pretty names" here as needed.
   variable_labels <- c(
     "Connectance" = "Connectance (Log)",
     "mean_Distance" = "Mean Distance (Log)"
   )
 
-  # 2. Scale and log-transform
+  # Scale and log-transform
   # We log these two specifically, then scale all variables in the list
   data_scaled <- data_input %>% 
     mutate(across(c("Connectance", "mean_Distance"), ~log(. + 0.001))) # added small offset in case of zeros
   
   data_scaled[vars_to_analyze] <- lapply(data_scaled[vars_to_analyze], scale)
   
-  # 3. Analyze the data (LMMs)
+  # Analyze the data (LMMs)
   resPCA <- map_dfr(vars_to_analyze, function(response) {
     formula_str <- paste(response, "~ PC1 + PC2 + (1 | pond)")
     model <- lmerTest::lmer(as.formula(formula_str), data = data_scaled)
@@ -103,7 +103,7 @@ run_pca_analysis <- function(data_input, vars_to_analyze, file_name) {
       filter(!str_detect(term, "(Intercept)"))
   })
   
-  # 4. Create significance pattern table
+  # Create significance pattern table
   sig_tablePCA <- resPCA %>%
     # FIXED LOGIC: If the variable has a label, use it. Otherwise, keep the original name.
     mutate(response = ifelse(response %in% names(variable_labels), 
@@ -123,7 +123,7 @@ run_pca_analysis <- function(data_input, vars_to_analyze, file_name) {
       names_vary = "slowest"
     )
   
-  # 5. Create flextable and Save
+  # Create flextable and Save
   sig_table_flextable <- sig_tablePCA %>%
     flextable() %>%
     set_caption(paste("Table: Significance Patterns -", file_name)) %>%
@@ -180,7 +180,6 @@ sig_tablePCA <- resPCA %>%
     names_glue="{term}_{.value}",
     names_vary="slowest"
   )
-
 
 
 ###plot
@@ -262,7 +261,7 @@ ggsave(here("Figures","PCAWeather.effect.png"),plot=coef.plotPCA,dpi=600,width =
 ```{r}
 run_full_pca_workflow <- function(data_input, vars_to_analyze, file_name) {
   
-  # 1. Internal Mappings
+  # Internal Mappings
   # Define your labels and the y-axis order here
   variable_labels <- c(
     "Connectance" = "Connectance (Log)",
@@ -274,13 +273,13 @@ run_full_pca_workflow <- function(data_input, vars_to_analyze, file_name) {
                "freqStateAv", "meanDurAv", "skewDur", "TotalEdges", "ave_Edge_weight", 
                "skewEdge", "B", "time_memory", "event.rate")
 
-  # 2. Data Transformation
+  # Data Transformation
   data_scaled <- data_input %>% 
     mutate(across(c("Connectance", "mean_Distance"), ~log(. + 0.001)))
   
   data_scaled[vars_to_analyze] <- lapply(data_scaled[vars_to_analyze], scale)
   
-  # 3. Mixed Model Analysis
+  # Mixed Model Analysis
   resPCA <- map_dfr(vars_to_analyze, function(response) {
     model <- lmerTest::lmer(as.formula(paste(response, "~ PC1 + PC2 + (1 | pond)")), data = data_scaled)
     broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
@@ -288,7 +287,7 @@ run_full_pca_workflow <- function(data_input, vars_to_analyze, file_name) {
       filter(!str_detect(term, "(Intercept)"))
   })
 
-  # 4. Plot Preparation
+  # Plot Preparation
   resPCA_prep <- resPCA %>%
     mutate(
       significant = p.value < 0.05,
@@ -311,7 +310,7 @@ run_full_pca_workflow <- function(data_input, vars_to_analyze, file_name) {
   ) %>%
     mutate(fill_color = ifelse(category %in% c("Node", "Spacing"), "grey95", "white"))
 
-  # 5. Generate Plot
+  # Generate Plot
   coef_plot <- ggplot(resPCA_prep, aes(x = estimate, y = response, color = term)) +
     geom_rect(data = background_data, aes(fill = fill_color),
               xmin = -Inf, xmax = Inf, ymin = -Inf, ymax = Inf,
@@ -337,7 +336,7 @@ run_full_pca_workflow <- function(data_input, vars_to_analyze, file_name) {
       axis.text.y = element_text(size = 12)
     )
 
-  # 6. Save Plot
+  # Save Plot
   ggsave(here("Figures", paste0("EffectSize_", file_name, ".png")), 
          plot = coef_plot, dpi = 600, width = 30, height = 20, units = "cm")
   
@@ -365,7 +364,7 @@ run_extreme_clim_workflow <- function(netclim_data, vars_to_analyze, file_suffix
                "freqStateAv", "meanDurAv", "skewDur", "TotalEdges", "ave_Edge_weight", 
                "skewEdge", "B", "time_memory", "event.rate")
 
-  # 2. Data Preparation
+  # Data Preparation
   # Load and prep the raw climate data
   sumclima_raw <- read.csv(here("./output/frog_climate_data_annualsum.csv")) %>%
     mutate(across(c(exthighTemp, extlongHeat, extDry, extDryT, extHot), factor)) %>%
@@ -375,7 +374,7 @@ run_extreme_clim_workflow <- function(netclim_data, vars_to_analyze, file_suffix
   netclimR <- left_join(netclim_data, sumclima_raw, by = "cycle")
   netclimR[vars_to_analyze] <- lapply(netclimR[vars_to_analyze], scale)
 
-  # 3. Analyze Data (Mixed Models)
+  # Analyze Data (Mixed Models)
   res <- map_dfr(vars_to_analyze, function(response) {
     # Using your specific extreme event formula
     model <- lmerTest::lmer(as.formula(paste(response, "~ extHot + extDryT + (1 | pond)")), data = netclimR)
@@ -385,7 +384,7 @@ run_extreme_clim_workflow <- function(netclim_data, vars_to_analyze, file_suffix
       filter(!str_detect(term, "(Intercept)"))
   })
 
-  # 4. Plot Preparation
+  # Plot Preparation
   res_prepE <- res %>%
     filter(!response %in% c("No_Spec")) %>%
     mutate(
@@ -437,7 +436,7 @@ run_extreme_clim_workflow <- function(netclim_data, vars_to_analyze, file_suffix
       axis.text.y = element_text(size = 12)
     )
 
-  # 6. Save Plot
+  #Save Plot
   ggsave(here("Figures", paste0("ExtremeClim_Effect_", file_suffix, ".png")), 
          plot = coef_plotE, dpi = 600, width = 30, height = 15, units = "cm")
   

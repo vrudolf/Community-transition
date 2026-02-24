@@ -45,7 +45,7 @@ options(readr.show_col_types = FALSE)
 
 frogs<-read_csv(here("./data/dailycalls_corrected_2001-2024.csv"))%>%na.omit
 
-#Phenology data doesn't always line up with the calendar year, like in our frog data. Instead, we used extensive analysis to define cutoff point for a an annual cycle which was day 340 in our case. So we use this cutoff to separates cycles which requires some data manipulation. Skip this step if your system aligns with calendar year
+#Phenology data doesn't always line up with the calendar year, like in our frog data. Instead, we used extensive analysis to define cutoff point for a an annual cycle which was day 340 in our case. So we use this cutoff to separate annual cycles which requires some data manipulation. Since our data starts at 2001, we start this as cycle 1. Skip this step if your system aligns with calendar year
 frogs<-frogs%>%mutate(cycle=case_when(
   doy>340~year-1999,
   .default=year-2000

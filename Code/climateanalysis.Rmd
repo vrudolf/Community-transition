@@ -29,7 +29,8 @@ We will examine how climate variables are linked to different aspects of communi
           "broom.mixed",
           "lmerTest",
           "rlang",
-          "ggrepel"
+          "ggrepel", 
+          "cowplot"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -440,6 +441,16 @@ coef.plotE
 ggsave(here("Figures","ExtremeClim.effect.png"),plot=coef.plotE,dpi=600,width = 30, height = 15, units = "cm")
 
 ```
+combine plots into one figure
+```{r}
+finalEffP<-plot_grid(coef.plotPCA,coef.plotE,
+                     labels=c("A","B"),
+                     ncol=1,
+                     rel_heights = c(1, 1)
+                     )
+ggsave(here("Figures","ClimateExt_Effect.png"),plot=finalEffP,dpi=600,width = 30, height = 30, units = "cm")
+```
+
 
 lets repeat the analysis with No_species as covariate
 ```{r}
@@ -524,5 +535,4 @@ sig_table_Ex_sp<-sig_tableExt_sp %>%
 save_as_docx(sig_table_Ex_sp, path = here("Output", "sig_table_Ext_sp.docx"))
 ```
 
-#Gap Robustness
-now plot for different gap assumptions
+
