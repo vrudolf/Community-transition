@@ -238,30 +238,3 @@ ggsave(here("Figures","network_plot_p1y1.png"),plot=P1Y1,dpi=600,width = 6, heig
 
 
 ```
-
-
-
-
-
-
-playing around with tna and qgraph, but it's not ideal
-```{r}
-test.network<-community_networks_weighted[["pond_3_cycle_11"]]
-tna.net<-tna(test.network)
-
-original_weight_matrix <- as.matrix(
-    igraph::as_adjacency_matrix(
-        graph = test.network,
-        type = "both",        # Include all edges (or "directed" if preferred)
-        attr = "weight", # <-- **CRITICAL: Uses the edge attribute value**
-        sparse = FALSE        # Returns a standard R matrix
-    )
-)
-tna.net$weights<-(original_weight_matrix)
-plot(tna.net, 
-     edge.labels=FALSE,
-     cut=2,
-     edge.wdith.max=6,
-     edge.width.min=1)
-```
-

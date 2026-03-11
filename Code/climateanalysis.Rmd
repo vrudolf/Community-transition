@@ -24,13 +24,13 @@ We will examine how climate variables are linked to different aspects of communi
           "car",
           "lme4",
           "flextable",
-          "stringr",
           "ggpubr",
           "broom.mixed",
           "lmerTest",
-          "rlang",
           "ggrepel", 
-          "cowplot"
+          "cowplot",
+          "factoextra",
+          "FactoMineR"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -67,7 +67,8 @@ netclim_g3 <- reduce(list(sumclima, state_connectance_metrics_g3), full_join) %>
   select(pond, cycle, Pond_Cycle, everything())
 
 ```
-For general info (not included in manuscript) let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship (note, correlations are in Community_transition code)
+##metric PCA (For general info, not included in manuscript) 
+let's see how those metrics fall out in a multidimensional space in a PCA to better understand they relationship (note, correlations are in Community_transition code)
 ```{r networkPCA, message=F}
 library("factoextra")
 library("FactoMineR")
@@ -130,7 +131,7 @@ It's also interesting that the correlation between variables are largely robust 
 
 
 #Network structure & Weather 
-Instead of using all the different weather variables, we will  use the PCA of climate to avoid colinearity issues among weather variables and reduce the number of preditors. Fortunately only two PCA were really important, which makes this a little bit easier
+Instead of using all the different weather variables, we will  use the PCA of climate to avoid co-linearity issues among weather variables and reduce the number of predictors. Fortunately only two PCA were really important, which makes this a little bit easier
 
 ##PCA analysis
 ```{r metric_WeatherPCA}
@@ -158,10 +159,6 @@ variable_labels <- c(
   "B" = "Burstiness",
   "event.rate" = "Event rate"
 )
-
-#note, I could test for random pond effect using ranova function of lmerTest package
-#i can also use the performance package to quantify effect size as explained variance for random effect.
-
 
 #get variables to analyze
 variable.for.extanalysis<-c("Unique_Nodes","Connectance", "modularity","betweenness", "mean_Distance", "freqStateAv",    "meanDurAv","skewDur","TotalEdges","ave_Edge_weight","skewEdge", "time_memory","B","event.rate")
@@ -294,14 +291,12 @@ coef.plotPCA
 ggsave(here("Figures","PCAWeather.effect.png"),plot=coef.plotPCA,dpi=600,width = 30, height = 15, units = "cm")
 ```
 
-
-
 # Extreme climate
 Let's look at differences in community structure metrics between extreme years and normal years.
 ```{r extremeClimateAnalysis}
 #get raw climate data
 sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%
-  mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat), extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot))%>%
+  mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat),extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot),extYear=if_else(extDryT=="Yes" & extHot=="Yes","Yes","No"))%>%
   select(-burstinessRain)
 
 netclimCur<-netclim #can be netclim, netclime_g1, _g2, _g3 based on gap data set
@@ -315,7 +310,7 @@ netclimR[variable.for.extanalysis] <- lapply(netclimR[variable.for.extanalysis],
 
 res <- map_dfr(variable.for.extanalysis, function(response) {
   # Fit the mixed model for this response
-  model <- lmer(as.formula(paste(response,"~ extHot+extDryT + (1 | pond)")), data = netclimR)
+  model <- lmer(as.formula(paste(response,"~ extHot*extDryT + (1 | pond)")), data = netclimR)
   
   # Tidy model output: fixed effects only, with confidence intervals
   broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
@@ -351,6 +346,7 @@ sig_table_Ex<-sig_tableExt %>%
 save_as_docx(sig_table_Ex, path = here("Output", "sig_table_Ext.docx"))
 
 ```
+
 test if species diversity differs between extreme years
 ```{r}
 sp_Ex<-lmer(No_Spec~ extHot+extDryT + (1 | pond), data = netclimR)
@@ -358,7 +354,6 @@ plot(sp_Ex)
 Anova(sp_Ex)
 
 ```
-
 
 
 Plot effect sizes of extreme drought and temperature

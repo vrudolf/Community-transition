@@ -46,7 +46,7 @@ climate<-climate%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),do
 
 #now this is usually on annual basis, but we need to align it with the "frog cycle" we used for the community analysis
 climate<-climate%>%subset(year<2025)%>%mutate(cycle=case_when(
-  doy>340~year-1999,
+  doy>338~year-1999,
   .default=year-2000
 ))
 climate<-climate%>%mutate(cycle_day=case_when(
@@ -63,7 +63,7 @@ sumclimaY<-climate%>%group_by(cycle)%>%
 ```
 
 # Extreme climate year
-We will identify extreme climate events based on the deviation from the average and plot it for reference. We'll focus on extreme hot and dry for now. 
+We will focus on extreme climate events (heat and drought) based on the deviation from the 50 average (see "historical climate analysis.Rmd"). 
 
 ```{r ExtremeYears}
 #load extreme years based on 50 year historical data, see "historical climate analysis"
@@ -71,7 +71,7 @@ extY<-read_csv(here("output","extremeyearsHist.csv"))
 ```
 
 #Burstiness of rainfall
-Lets calculate how bursty rain fall is.
+Lets calculate how bursty (temporally clustered) rain fall is.
 ```{r burstiness}
 # Define a function to calculate burstiness
 calculate_burstiness <- function(dates) {
@@ -101,16 +101,19 @@ sumclimaYB<-left_join(sumclimaY,burstiness_by_cycle)
 ```
 
 ##drought index data
-This is data on the drought index, which is calculated based on "missing" rain and is a composite integrative index. It comes in range of severeness categories, so not as continuous values. To use it in the analysis we modify it and combine it into two single indeces, one indicating the mean drought severity, and one indicating most extreme drought status
+This is data on the drought index, which is calculated based on "missing" rain and is a composite integrative index. It comes in range of severeness categories, so not as continuous values. To use it in the analysis we modify it and combine it into two single indexes, one indicating the mean drought severity, and one indicating most extreme drought status
 ```{r drought}
 #load data and organize data & convert it to "frog" annual cycles
 drought<-read_csv(here("data","DroughtDataDCForest.csv"))%>%select(ValidStart,None,D0,D1,D2,D3,D4)
 drought$DATE<-as.Date(drought$ValidStart,"%m/%d/%Y")
+
 drought<-drought%>%mutate(year = year(DATE), month=month(DATE), day=day(DATE),doy=as.numeric(format(DATE, "%j")))%>%subset(year<2025)
+
 drought<-drought%>%mutate(cycle=case_when(
-  doy>340~year-1999,
+  doy>338~year-1999,
   .default=year-2000
 ))
+
 drought<-drought%>%mutate(cycle_day=case_when(
   doy>=339~doy-338,
   .default=doy+27
@@ -120,6 +123,8 @@ drought<-drought%>%mutate(cycle_day=case_when(
 drought<-drought%>%mutate(Dseverity=D0+D1*2+D2*3+D3*4+D4*4)
 sumdrought<-drought%>%group_by(cycle)%>%
   summarize(Dsevmean=mean(Dseverity),Dext=max(Dseverity))
+
+#plot
 ggplot(sumdrought, aes(x=cycle, y=Dext))+geom_line()+geom_point()+theme_bw()
 ggplot(sumdrought, aes(x=cycle, y=Dsevmean))+geom_line()+geom_point()+theme_bw()
 
@@ -129,7 +134,7 @@ sumclimaYBD<-left_join(sumclimaYB,sumdrought)%>%subset(cycle<25)
 
 ```
 
-Now that we have all weather data, we save it and we scale the variables so we can compare them
+Now that we have all weather data, we save it and we normalize/scale the variables so we can compare them directly
 ```{r scaleweatherdata}
 #save raw data with extreme years
 sumclimaYE<-left_join(sumclimaYBD, extY)
@@ -162,6 +167,8 @@ print(weather.pca)
 #plot PC %explanation
 fviz_eig(weather.pca, col.var="blue")
 
+#plot Figure S1
+
 #plot vector loading for first 2 PCA
 pca_loading<-fviz_pca_var(weather.pca,
              labelsize = 4,
@@ -173,6 +180,8 @@ pca_loading<-fviz_pca_var(weather.pca,
     ) +
   theme_pubr(base_size = 18)
 pca_loading
+
+
 ggsave(here("Figures","WeatherPCAloading.png"),plot=pca_loading,dpi=600,width = 15, height = 15, units = "cm")
 
   

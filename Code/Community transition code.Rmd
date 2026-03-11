@@ -16,8 +16,6 @@ The goal of this analysis is to turn species phenologies into a network of commu
  #Load packages
   #list of packages that are needed
   pack<-c("tidyverse",
-          "tsna",
-          "ndtv",
           "knitr",
           "here",
           "igraph",
@@ -29,7 +27,11 @@ The goal of this analysis is to turn species phenologies into a network of commu
           "car",
           "ggbeeswarm",
           "lme4",
-          "ggpubr"
+          "ggpubr",
+          "mgcv",
+          "flextable",
+          "patchwork",
+          "rmcorr"
           )
   #check whether packages are installed and load them, if not get and then load
  package.check <- lapply(pack, FUN = function(x){
@@ -443,7 +445,7 @@ Duration_probD_plot<-ggplot() +
     axis.title = element_text(size = 12))+
   coord_cartesian(xlim = c(0, 60))
 
-#save the plot
+#save the plot (Figure S3)
 ggsave(here("Figures","Durationprop.png"),plot=Duration_probD_plot,dpi=300,width = 8, height = 8, units = "in")
 
 ```
@@ -499,6 +501,7 @@ ggplot(corStat_dur_freq_g3, aes(x=pond, y=correlation, color=cycle, size=obs))+
   labs(y="Correlation between state duration & frequency", x="Pond community")+
   theme_bw()
 
+#save plot (Figure S2)
 ggsave(here("Figures","StateDur_Freq.png"),plot=freq_dur_plot,dpi=300,width = 8, height = 4, units = "in")
 
 ```
@@ -524,8 +527,6 @@ ggplot(sum_start,aes(x=pond, y=meanDayOnset, color=cycle))+
   stat_summary(fun.data=mean_se,size=1)+
   theme_bw()
 
-meanDy<-lm(meanDayOnset~pond+as.factor(cycle), data=sum_start_g1)
-Anova(meanDy)
 ```
 
 ##Event rate
@@ -1071,7 +1072,7 @@ write_rds(Transition_metrics_g3, here("./output/frog_transition_matrix_metrics_g
 ```
 
 #Plot metrics by pond and cycle
-lets plot all response variables by pond and year
+lets plot all response variables by pond and year (Fig. 2 in main text)
 ```{r metricsPlot}
 Transition_metrics<-readRDS(here("./output/frog_transition_matrix_metrics.rds"))
 
@@ -1163,7 +1164,7 @@ nodvsspecDiv_plot<-ggplot(Transition_metrics, aes(x=(No_Spec), y=(Unique_Nodes))
   theme(axis.text = element_text(size = 10),
     axis.title = element_text(size = 16))
 
-#safe figure
+#safe figure (Fig. 3 in main text)
 ggsave(here("Figures","NodevsSpecDiv.png"),plot=nodvsspecDiv_plot,dpi=600,width = 8, height = 6, units = "in")
 
 ```

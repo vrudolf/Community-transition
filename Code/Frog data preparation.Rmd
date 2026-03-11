@@ -244,19 +244,19 @@ process_frog_presence <- function(frogs_data, gap_tolerance = 0) {
 
 # Main execution with different gap tolerances
 
-# 1: No gap tolerance (original behavior)
+# 1: No gap tolerance (original raw data)
 cat("=== Processing with no gap tolerance (original) ===\n")
 results_original <- process_frog_presence(frogs, gap_tolerance = 0)
 
-# 2: 1-day gap tolerance
+# 2: 1-day gap tolerance (ignore 1 day calling gaps)
 cat("\n=== Processing with 1-day gap tolerance ===\n")
 results_1day <- process_frog_presence(frogs, gap_tolerance = 1)
 
-# 3: 2-day gap tolerance
+# 3: 2-day gap tolerance (ignore 2 day calling gaps)
 cat("\n=== Processing with 1-day gap tolerance ===\n")
 results_2day <- process_frog_presence(frogs, gap_tolerance = 2)
 
-# 4: 3-day gap tolerance
+# 4: 3-day gap tolerance (ignore 3 day calling gaps)
 cat("\n=== Processing with 3-day gap tolerance ===\n")
 results_3day <- process_frog_presence(frogs, gap_tolerance = 3)
 
@@ -283,7 +283,6 @@ comparison_results <- compare_gap_tolerance_results(results_original, results_1d
 cat("\n=== Comparison of Gap Tolerance Effects ===\n")
 print(comparison_results)
 
-
 node_dynamic <- results_original$node_dynamic
 node_dynamic_g1 <- results_1day$node_dynamic
 node_dynamic_g2 <- results_2day$node_dynamic
@@ -292,15 +291,6 @@ node_dynamic_g3 <- results_3day$node_dynamic
 node_attributes <- results_original$node_attributes
 species_summary <- results_original$species_summary
 
-# Display summary information
-cat("Summary of species presence intervals:\n")
-print(species_summary)
-
-cat("\nFirst few rows of node_dynamic:\n")
-print(head(node_dynamic))
-
-cat("\nFirst few rows of node_attributes:\n")
-print(head(node_attributes))
 
 # Save results with gap tolerance in file name
 write_csv(node_dynamic, here("output","frogs_node_dynamic.csv"))
