@@ -213,6 +213,47 @@ save_as_docx(sig_table_PCA, path = here("Output", "sig_table_PCA.docx"))
 
 
 ```
+create table to check how P values hold up to FDR correction for multiple comparisons
+```{r}
+resPCA_fdr_comp <- resPCA %>%
+  group_by(term) %>%
+  mutate(
+    q.value = p.adjust(p.value, method = "fdr"),
+    sig_fdr = if_else(q.value < 0.05, "Yes", "No")
+  ) %>%
+  ungroup() %>%
+  mutate(response = variable_labels[response]) %>%
+  select(response, term, p.value, q.value, sig_fdr) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    q.value = round(q.value, 4)
+  ) %>%
+  pivot_wider(
+    names_from  = term,
+    values_from = c(p.value, q.value, sig_fdr),
+    names_glue  = "{term}_{.value}",
+    names_vary  = "slowest"
+  )
+
+sig_table_PCA_FDR <- resPCA_fdr_comp %>%
+  flextable() %>%
+  set_caption("Table: Raw vs. FDR-Corrected p-values (PCA)") %>%
+  theme_booktabs() %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  set_header_labels(
+    response        = "Response",
+    PC1_p.value     = "PC1 (Raw p)",
+    PC1_q.value     = "PC1 (FDR q)",
+    PC1_sig_fdr     = "PC1 Sig (q<0.05)",
+    PC2_p.value     = "PC2 (Raw p)",
+    PC2_q.value     = "PC2 (FDR q)",
+    PC2_sig_fdr     = "PC2 Sig (q<0.05)"
+  ) %>%
+  autofit()
+print(sig_table_PCA_FDR)
+```
+
 
 ##PCA analysis effect size plot
 ```{r}
@@ -272,7 +313,7 @@ coef.plotPCA <- resPCA_prep %>%
     labels = variable_labels) +
   labs(x = "Standardized coefficients and 95% CI", y = "") + 
   scale_color_manual(
-    values = c("PC1" = "#33B8CC", "PC2" = "#CCAA33"), 
+    values = c("PC2" = "#33B8CC", "PC1" = "#CCAA33"), 
     guide = "none") +
   theme_pubr(base_size = 16) +
   theme(
@@ -297,7 +338,8 @@ Let's look at differences in community structure metrics between extreme years a
 #get raw climate data
 sumclima.raw<-read.csv(here("./output/frog_climate_data_annualsum.csv"))%>%
   mutate(exthighTemp=factor(exthighTemp), extlongHeat=factor(extlongHeat),extDry=factor(extDry),extDryT=factor(extDryT), extHot=factor(extHot),extYear=if_else(extDryT=="Yes" & extHot=="Yes","Yes","No"))%>%
-  select(-burstinessRain)
+  select(-burstinessRain)%>%
+  select(cycle, exthighTemp, extlongHeat, extDry, extDryDays, extHot, extDryT, extYear)
 
 netclimCur<-netclim #can be netclim, netclime_g1, _g2, _g3 based on gap data set
 #join data
@@ -310,7 +352,7 @@ netclimR[variable.for.extanalysis] <- lapply(netclimR[variable.for.extanalysis],
 
 res <- map_dfr(variable.for.extanalysis, function(response) {
   # Fit the mixed model for this response
-  model <- lmer(as.formula(paste(response,"~ extHot*extDryT + (1 | pond)")), data = netclimR)
+  model <- lmer(as.formula(paste(response,"~ extHot+extDryT + (1 | pond)")), data = netclimR)
   
   # Tidy model output: fixed effects only, with confidence intervals
   broom.mixed::tidy(model, effects = "fixed", conf.int = TRUE) %>%
@@ -346,6 +388,50 @@ sig_table_Ex<-sig_tableExt %>%
 save_as_docx(sig_table_Ex, path = here("Output", "sig_table_Ext.docx"))
 
 ```
+
+same but using FDR comparisons to check which results might change
+```{r}
+#make comparison table with raw p values and FDR q-value
+res_fdr_comp <- res %>%
+  group_by(term) %>%
+  mutate(
+    q.value = p.adjust(p.value, method = "fdr"),
+    sig_fdr = if_else(q.value < 0.05, "Yes", "No")
+  ) %>%
+  ungroup() %>%
+  mutate(response = variable_labels[response]) %>%
+  select(response, term, p.value, q.value, sig_fdr) %>%
+  mutate(
+    p.value = round(p.value, 4),
+    q.value = round(q.value, 4)
+  ) %>%
+  pivot_wider(
+    names_from  = term,
+    values_from = c(p.value, q.value, sig_fdr),
+    names_glue  = "{term}_{.value}",
+    names_vary  = "slowest"
+  )
+
+sig_table_FDR <- res_fdr_comp %>%
+  flextable() %>%
+  set_caption("Table: Raw vs. FDR-Corrected p-values") %>%
+  theme_booktabs() %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  # Rename headers for clarity
+  set_header_labels(
+    response            = "Response",
+    extHotYes_p.value   = "extHot (Raw p)",
+    extHotYes_q.value   = "extHot (FDR q)",
+    extHotYes_sig_fdr   = "extHot Sig (q<0.05)",
+    extDryTYes_p.value  = "extDryT (Raw p)",
+    extDryTYes_q.value  = "extDryT (FDR q)",
+    extDryTYes_sig_fdr  = "extDryT Sig (q<0.05)"
+  ) %>%
+  autofit()
+print(sig_table_FDR)
+```
+
 
 test if species diversity differs between extreme years
 ```{r}

@@ -81,7 +81,7 @@ Graph the daily transition networks
 ```{r}
 #select focal pond and cycle
 Focal_pond<-4
-Focal_cycle<-23
+Focal_cycle<-1
 testP<-community_transitions%>%
   subset(pond==Focal_pond & cycle==Focal_cycle)%>%
   select(starting_state,end_state,day)
@@ -99,7 +99,7 @@ nodes <- data.frame(name = unique(c(testP$starting_state, testP$end_state)))%>%
 
 
 state_durations <- community_transitions_g3 %>%
-  subset(pond == 8 & cycle == 10) %>%
+  subset(pond == Focal_pond & cycle == Focal_cycle) %>%
   arrange(day) %>%
   group_by(starting_state) %>%
   summarize(avg_duration = mean(c(diff(day), 1)), .groups = 'drop')
@@ -218,13 +218,14 @@ wrap_plots(plot_list, ncol = 5)  # Adjust ncol as needed
 
 #plot a  subset 3 dry years (top row) vs 3 normal years
 
-extY_comp_plot<-wrap_plots(plot_list[c(6,11,22,1 ,16,24)], ncol = 3)+
+extY_comp_plot<-wrap_plots(plot_list[c(5,11,22,1,8,16)], ncol = 3)+
   plot_layout(guide="collect")&
   theme(legend.position="right",
         legend.box.just="right",
         legend.justification="right")
+extY_comp_plot
 #save all six plots
-ggsave(here("Figures","extremeY_comp_network_plot.png"),plot=extY_comp_plot,dpi=600,width = 12, height = 8, units = "in")
+#ggsave(here("Figures","extremeY_comp_network_plot.png"),plot=extY_comp_plot,dpi=600,width = 12, height = 8, units = "in")
 
 #plot each individually
 P1Y1<-wrap_plots(plot_list[c(1)])
@@ -236,5 +237,30 @@ P1Y24<-wrap_plots(plot_list[c(24)])
 
 ggsave(here("Figures","network_plot_p1y1.png"),plot=P1Y1,dpi=600,width = 6, height = 4, units = "in")
 
+```
+Plot one at a time
+```{r}
+
+# Loop through the list and save each plot directly to the Figures folder
+for (i in seq_along(plot_list)) {
+  
+  # Identify the cycle for the filename
+  current_cycle <- cycles_pond1[i]
+  
+  # Construct the filename
+  file_name <- paste0("network_p", focalpond, "y", current_cycle, ".png")
+  
+  # Save directly into the Figures folder
+  ggsave(
+    filename = here("Figures", file_name),
+    plot = plot_list[[i]],
+    dpi = 600,
+    width = 6, 
+    height = 5, 
+    units = "in",
+    bg = "white"
+  )
+}
 
 ```
+
